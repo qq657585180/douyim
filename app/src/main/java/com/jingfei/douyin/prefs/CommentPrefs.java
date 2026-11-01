@@ -72,7 +72,7 @@ public final class CommentPrefs {
     public static final String KEY_COMMENTS_AE21A37D1C = "comments.ae21a37d1c";
 
     /** 显示完整时间（comment.time） */
-    public static final String KEY_COMMENT_TIME = "comment.time";
+    public static final String KEY_COMMENT_TIME_DOT = "comment.time";
 
     /** 长按查看 IP 属地（comment.region） */
     public static final String KEY_COMMENT_REGION = "comment.region";
