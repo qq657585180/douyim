@@ -4,8 +4,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * 直播增强（douyin_live）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 直播增强（douyin_live）Hook 子系统。已配置读取；画质/人数/清爽/语音等 Hook 依赖抖音直播内部视图，暂无稳定 API 依据，保持 TODO。
  */
 final class LiveEnhancer {
     private static volatile SharedPreferences prefs;

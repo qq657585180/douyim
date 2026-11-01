@@ -4,8 +4,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * 评论增强（douyin_comment）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 评论增强（douyin_comment）Hook 子系统。已配置读取；评论区 UI/交互/过滤/图片语音等 Hook 依赖抖音内部视图结构，暂无稳定 API 依据，保持 TODO。
  */
 final class CommentEnhancer {
     private static volatile SharedPreferences prefs;

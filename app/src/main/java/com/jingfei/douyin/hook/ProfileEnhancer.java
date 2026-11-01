@@ -4,8 +4,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * 个人主页（douyin_profile）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 个人主页（douyin_profile）Hook 子系统。已配置读取；默认作品页/作品视图/主页工具等 Hook 依赖抖音主页内部布局，暂无稳定 API 依据，保持 TODO。
  */
 final class ProfileEnhancer {
     private static volatile SharedPreferences prefs;

@@ -4,8 +4,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * 消息隐私（douyin_message）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 消息隐私（douyin_message）Hook 子系统。已配置读取；聊天工具/已读输入状态/撤回续火/聊天导出等 Hook 依赖抖音内部消息协议，暂无稳定 API 依据，保持 TODO。
  */
 final class MessagePrivacy {
     private static volatile SharedPreferences prefs;

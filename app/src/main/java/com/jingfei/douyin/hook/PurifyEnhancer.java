@@ -3,9 +3,13 @@ package com.jingfei.douyin.hook;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import com.jingfei.douyin.FilterPreferences;
+import com.jingfei.douyin.prefs.PurifyPrefs;
+
 /**
- * 净化过滤（douyin_purify）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 净化过滤（douyin_purify）Hook 子系统。
+ * 由抖X移植：将抖X净化设置桥接到 FeedContentTracker 的过滤逻辑。
+ * 当 feed_filter 开启时，用抖X的广告跳过/关键词覆盖旧版过滤；关闭则回退旧版设置。
  */
 final class PurifyEnhancer {
     private static volatile SharedPreferences prefs;
@@ -16,15 +20,38 @@ final class PurifyEnhancer {
     static void install(DouyinModule module, ClassLoader loader) {
         SharedPreferences p = module.getRemotePreferences("douyin_purify");
         prefs = p;
-        p.registerOnSharedPreferenceChangeListener(LISTENER);
+        if (p != null) {
+            p.registerOnSharedPreferenceChangeListener(LISTENER);
+        }
         try {
-            // TODO: 弹幕/清爽/广告跳过/feed阈值/小程序广告 Hook
+            applyOverride();
             module.log(Log.INFO, DouyinModule.TAG,
                     "PurifyEnhancer installed (douyin_purify)");
         } catch (Throwable error) {
             module.log(Log.WARN, DouyinModule.TAG,
                     "PurifyEnhancer skipped: " + error);
         }
+    }
+
+    private static void applyOverride() {
+        if (prefs == null) {
+            return;
+        }
+        boolean feedFilterEnabled =
+                PurifyPrefs.getBoolean(prefs, PurifyPrefs.KEY_FEED_FILTER, false)
+                        && PurifyPrefs.getBoolean(
+                        prefs, PurifyPrefs.KEY_FEED_FILTER_F42350811B, true);
+        if (!feedFilterEnabled) {
+            FeedContentTracker.applyPurifyOverride(null);
+            return;
+        }
+        boolean skipAds =
+                PurifyPrefs.getBoolean(prefs, PurifyPrefs.KEY_SKIPAD, true)
+                        || PurifyPrefs.getBoolean(prefs, PurifyPrefs.KEY_PLAYLET_AD, true);
+        String keywords = PurifyPrefs.getString(
+                prefs, PurifyPrefs.KEY_FEED_FILTER_DF653A2BF7, "");
+        FeedContentTracker.applyPurifyOverride(
+                new FilterPreferences.Values(skipAds, false, false, false, keywords));
     }
 
     static boolean bool(String key, boolean def) {
@@ -41,6 +68,11 @@ final class PurifyEnhancer {
 
     private static final SharedPreferences.OnSharedPreferenceChangeListener LISTENER =
             (preferences, key) -> {
-                // 配置变更后无需额外处理：Hook 实时读取 getBoolean/getInt/getString
+                prefs = preferences;
+                try {
+                    applyOverride();
+                } catch (RuntimeException ignored) {
+                    // 桥接失败不影响主流程
+                }
             };
 }

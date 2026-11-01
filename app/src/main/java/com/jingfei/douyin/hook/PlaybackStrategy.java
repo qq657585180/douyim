@@ -3,9 +3,13 @@ package com.jingfei.douyin.hook;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import com.jingfei.douyin.prefs.PlaybackPrefs;
+
 /**
- * 播放策略（douyin_playback）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 播放策略（douyin_playback）Hook 子系统。
+ * 由抖X移植：将抖X播放设置桥接到沉浸式 UI 与播放器。
+ * 已实现：自动连播 → ImmersiveUi。
+ * 待补充：倍速/画质/常驻进度条/播放策略（参考 PlayerHooks）等 Hook。
  */
 final class PlaybackStrategy {
     private static volatile SharedPreferences prefs;
@@ -16,15 +20,29 @@ final class PlaybackStrategy {
     static void install(DouyinModule module, ClassLoader loader) {
         SharedPreferences p = module.getRemotePreferences("douyin_playback");
         prefs = p;
-        p.registerOnSharedPreferenceChangeListener(LISTENER);
+        if (p != null) {
+            p.registerOnSharedPreferenceChangeListener(LISTENER);
+        }
         try {
-            // TODO: 倍速/进度条/连播/画质/播放策略 Hook（参考 PlayerHooks）
+            applyAutoplayBridge();
             module.log(Log.INFO, DouyinModule.TAG,
                     "PlaybackStrategy installed (douyin_playback)");
         } catch (Throwable error) {
             module.log(Log.WARN, DouyinModule.TAG,
                     "PlaybackStrategy skipped: " + error);
         }
+    }
+
+    /** 桥接抖X自动连播到 ImmersiveUi；任一开关开启即启用。 */
+    private static void applyAutoplayBridge() {
+        if (prefs == null) {
+            return;
+        }
+        boolean autoplay =
+                PlaybackPrefs.getBoolean(prefs, PlaybackPrefs.KEY_AUTOPLAY, true)
+                        || PlaybackPrefs.getBoolean(
+                        prefs, PlaybackPrefs.KEY_PAGE_AUTOPLAY, true);
+        ImmersiveUi.setAutoPlayEnabled(autoplay);
     }
 
     static boolean bool(String key, boolean def) {
@@ -41,6 +59,11 @@ final class PlaybackStrategy {
 
     private static final SharedPreferences.OnSharedPreferenceChangeListener LISTENER =
             (preferences, key) -> {
-                // 配置变更后无需额外处理：Hook 实时读取 getBoolean/getInt/getString
+                prefs = preferences;
+                try {
+                    applyAutoplayBridge();
+                } catch (RuntimeException ignored) {
+                    // 桥接失败不影响主流程
+                }
             };
 }

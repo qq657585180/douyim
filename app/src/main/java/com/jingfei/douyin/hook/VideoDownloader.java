@@ -55,8 +55,27 @@ final class VideoDownloader {
     private static final Set<String> ACTIVE =
             Collections.synchronizedSet(new HashSet<>());
     private static AlertDialog chooser;
+    private static volatile String downloadSubdirectory;
 
     private VideoDownloader() {
+    }
+
+    /** 由 DownloadExt 注入抖X下载子目录设置（douyin_download）。 */
+    static void setDownloadSubdirectory(String subdirectory) {
+        downloadSubdirectory = subdirectory;
+    }
+
+    /** 拼出带子目录的 MediaStore RELATIVE_PATH，空子目录时回退 Download 根目录。 */
+    private static String downloadRelativePath() {
+        String sub = downloadSubdirectory;
+        if (sub == null || sub.isEmpty()) {
+            return Environment.DIRECTORY_DOWNLOADS;
+        }
+        String clean = sub.replace('\\', '/').replaceAll("^/+", "").replaceAll("/+$", "");
+        if (clean.isEmpty()) {
+            return Environment.DIRECTORY_DOWNLOADS;
+        }
+        return Environment.DIRECTORY_DOWNLOADS + "/" + clean;
     }
 
     static void chooseDownload(
@@ -421,7 +440,7 @@ final class VideoDownloader {
                 values.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
                 values.put(
                         MediaStore.MediaColumns.RELATIVE_PATH,
-                        Environment.DIRECTORY_DOWNLOADS
+                        downloadRelativePath()
                 );
                 values.put(MediaStore.MediaColumns.IS_PENDING, 1);
                 destination = resolver.insert(
@@ -511,9 +530,17 @@ final class VideoDownloader {
         request.setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
         );
+        String sub = downloadSubdirectory;
+        String downloadFileName = fileName;
+        if (sub != null && !sub.isEmpty()) {
+            String clean = sub.replace('\\', '/').replaceAll("^/+", "").replaceAll("/+$", "");
+            if (!clean.isEmpty()) {
+                downloadFileName = clean + "/" + fileName;
+            }
+        }
         request.setDestinationInExternalPublicDir(
                 Environment.DIRECTORY_DOWNLOADS,
-                fileName
+                downloadFileName
         );
         addRequestHeaders(request);
         long downloadId = manager.enqueue(request);
@@ -602,6 +629,13 @@ final class VideoDownloader {
         File directory = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_DOWNLOADS
         );
+        String sub = downloadSubdirectory;
+        if (sub != null && !sub.isEmpty()) {
+            String clean = sub.replace('\\', '/').replaceAll("^/+", "").replaceAll("/+$", "");
+            if (!clean.isEmpty()) {
+                directory = new File(directory, clean);
+            }
+        }
         if (!directory.isDirectory() && !directory.mkdirs()) {
             throw new IOException("无法创建 Download 目录");
         }
@@ -635,7 +669,7 @@ final class VideoDownloader {
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
         values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, downloadRelativePath());
         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
         Uri destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
         if (destination == null) throw new IOException("无法在 Download 目录创建文件");

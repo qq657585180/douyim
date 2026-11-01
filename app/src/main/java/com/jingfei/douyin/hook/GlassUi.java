@@ -4,8 +4,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * 液态玻璃（douyin_appearance）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * 液态玻璃（douyin_appearance）Hook 子系统。已配置读取；玻璃外观（glass.*）依赖抖音沉浸视图的绘制通道，暂无稳定 API 依据，保持 TODO。
  */
 final class GlassUi {
     private static volatile SharedPreferences prefs;

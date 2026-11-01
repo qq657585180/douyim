@@ -47,6 +47,7 @@ final class FeedContentTracker {
     private static WeakReference<Object> lastPanel = new WeakReference<>(null);
     private static volatile FilterPreferences.Values filterSettings =
             FilterPreferences.defaults();
+    private static volatile FilterPreferences.Values purifyOverride;
     private static SharedPreferences filterPreferences;
     private static final SharedPreferences.OnSharedPreferenceChangeListener
             FILTER_PREFERENCE_LISTENER =
@@ -193,7 +194,7 @@ final class FeedContentTracker {
         if (bestPanel != null) {
             lastPanel = new WeakReference<>(bestPanel);
         }
-        return bestAweme == null ? null : snapshot(bestAweme, filterSettings);
+        return bestAweme == null ? null : snapshot(bestAweme, activeFilterSettings());
     }
 
     /** ViewPager of the feed panel that currently owns the screen, used for programmatic paging. */
@@ -240,7 +241,17 @@ final class FeedContentTracker {
     }
 
     private static Snapshot snapshot(Object aweme) {
-        return snapshot(aweme, filterSettings);
+        return snapshot(aweme, activeFilterSettings());
+    }
+
+    /** 由 PurifyEnhancer 注入抖X净化过滤覆盖；为 null 时回退到旧版过滤设置。 */
+    static void applyPurifyOverride(FilterPreferences.Values override) {
+        purifyOverride = override;
+    }
+
+    private static FilterPreferences.Values activeFilterSettings() {
+        FilterPreferences.Values override = purifyOverride;
+        return override != null ? override : filterSettings;
     }
 
     static Snapshot snapshot(

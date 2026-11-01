@@ -56,6 +56,12 @@ final class ImmersiveUi {
     private static volatile boolean moduleEnabled = true;
     private static volatile boolean blockDoubleTap;
     private static volatile boolean immersiveEnabled = true;
+    private static volatile boolean autoPlayEnabled = true;
+    private static volatile Boolean appearanceModuleEnabled;
+    private static volatile Boolean appearanceBlockDoubleTap;
+    private static volatile Boolean appearanceImmersiveEnabled;
+    private static volatile Boolean appearanceShowDanmaku;
+    private static volatile Boolean appearanceDoubleTapComments;
     private static SharedPreferences immersivePreferences;
     private static final SharedPreferences.OnSharedPreferenceChangeListener
             PREFERENCE_LISTENER = (preferences, key) -> {
@@ -276,6 +282,7 @@ final class ImmersiveUi {
         showDanmaku = com.jingfei.douyin.FilterPreferences.readShowDanmaku(preferences);
         openCommentsOnDoubleTap =
                 com.jingfei.douyin.FilterPreferences.readDoubleTapComments(preferences);
+        applyAppearanceOverridesToFields();
         MAIN.post(() -> {
             if (changed) {
                 touchGestureToken++;
@@ -299,6 +306,44 @@ final class ImmersiveUi {
             }
             scheduleScan(0L);
         });
+    }
+
+    /** 由 PlaybackStrategy 注入抖X自动连播设置（douyin_playback）。 */
+    static void setAutoPlayEnabled(boolean enabled) {
+        autoPlayEnabled = enabled;
+    }
+
+    /** 由 ThemeManager 注入抖X外观覆盖（douyin_appearance）。null 表示不覆盖该字段。 */
+    static void applyAppearanceOverrides(
+            Boolean moduleEnabled,
+            Boolean blockDoubleTap,
+            Boolean immersiveEnabled,
+            Boolean showDanmaku,
+            Boolean doubleTapComments) {
+        appearanceModuleEnabled = moduleEnabled;
+        appearanceBlockDoubleTap = blockDoubleTap;
+        appearanceImmersiveEnabled = immersiveEnabled;
+        appearanceShowDanmaku = showDanmaku;
+        appearanceDoubleTapComments = doubleTapComments;
+        applyAppearanceOverridesToFields();
+    }
+
+    private static void applyAppearanceOverridesToFields() {
+        if (appearanceModuleEnabled != null) {
+            moduleEnabled = appearanceModuleEnabled;
+        }
+        if (appearanceBlockDoubleTap != null) {
+            blockDoubleTap = appearanceBlockDoubleTap;
+        }
+        if (appearanceImmersiveEnabled != null) {
+            immersiveEnabled = appearanceImmersiveEnabled;
+        }
+        if (appearanceShowDanmaku != null) {
+            showDanmaku = appearanceShowDanmaku;
+        }
+        if (appearanceDoubleTapComments != null) {
+            openCommentsOnDoubleTap = appearanceDoubleTapComments;
+        }
     }
 
     static void onActivityResumed(Activity activity) {
@@ -656,7 +701,7 @@ final class ImmersiveUi {
             return;
         }
 
-        if (PlaybackState.consumeLoopBoundary()) {
+        if (autoPlayEnabled && PlaybackState.consumeLoopBoundary()) {
             onPlaybackCompleted("completed loop boundary");
             scheduleNextScan();
             return;

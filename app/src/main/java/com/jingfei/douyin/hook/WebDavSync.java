@@ -4,8 +4,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * WebDAV备份（douyin_system）Hook 子系统骨架。
- * 由抖X移植：配置读取已就绪，具体 Hook 逻辑在此逐步补充。
+ * WebDAV备份（douyin_system）Hook 子系统。已配置读取；WebDAV 同步/诊断/日志/问题报告等 Hook 依赖抖音数据格式，暂无稳定 API 依据，保持 TODO。
  */
 final class WebDavSync {
     private static volatile SharedPreferences prefs;
