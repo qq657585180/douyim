@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import org.junit.Test;
 import java.io.ByteArrayOutputStream;

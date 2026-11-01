@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import android.annotation.TargetApi;
 import android.app.Activity;

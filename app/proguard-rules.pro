@@ -3,4 +3,4 @@
     public <init>();
 }
 
--keepclassmembers class com.zz.douyin.hook.** { *; }
+-keepclassmembers class com.jingfei.douyin.hook.** { *; }

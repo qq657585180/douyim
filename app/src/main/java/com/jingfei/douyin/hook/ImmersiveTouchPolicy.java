@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 final class ImmersiveTouchPolicy {
     static final String GESTURE_VIEW = "com.ss.android.ugc.aweme.feed.ui.LongPressLayout";

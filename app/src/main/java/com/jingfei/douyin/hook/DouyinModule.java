@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import android.app.Activity;
 import android.app.Instrumentation;
@@ -55,7 +55,7 @@ public final class DouyinModule extends XposedModule {
                 "feed content tracker",
                 () -> {
                     SharedPreferences preferences = getRemotePreferences(
-                            com.zz.douyin.FilterPreferences.NAME
+                            com.jingfei.douyin.FilterPreferences.NAME
                     );
                     ImmersiveUi.configurePreferences(preferences);
                     FeedContentTracker.install(

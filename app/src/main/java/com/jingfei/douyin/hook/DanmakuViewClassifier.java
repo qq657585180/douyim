@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 /**
  * Recognizes the danmaku layers Douyin 40.8 creates.

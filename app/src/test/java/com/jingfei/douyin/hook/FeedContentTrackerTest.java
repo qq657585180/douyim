@@ -1,11 +1,11 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.google.gson.annotations.SerializedName;
-import com.zz.douyin.FilterPreferences;
+import com.jingfei.douyin.FilterPreferences;
 
 import org.junit.Test;
 

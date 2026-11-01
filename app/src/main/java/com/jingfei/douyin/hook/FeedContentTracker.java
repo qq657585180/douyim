@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import android.content.SharedPreferences;
 import android.graphics.Rect;
@@ -6,7 +6,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 
-import com.zz.douyin.FilterPreferences;
+import com.jingfei.douyin.FilterPreferences;
 
 import java.lang.annotation.Annotation;
 import java.lang.ref.WeakReference;

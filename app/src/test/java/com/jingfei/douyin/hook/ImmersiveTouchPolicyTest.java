@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;

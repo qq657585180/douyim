@@ -7,11 +7,11 @@ layout.buildDirectory.set(
 )
 
 android {
-    namespace = "com.zz.douyin"
+    namespace = "com.jingfei.douyin"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.zz.douyin"
+        applicationId = "com.jingfei.douyin"
         minSdk = 28
         targetSdk = 35
         versionCode = 19

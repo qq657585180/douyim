@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
@@ -268,14 +268,14 @@ final class ImmersiveUi {
     }
 
     private static void refreshPreferences(SharedPreferences preferences) {
-        boolean enabled = com.zz.douyin.FilterPreferences.readModuleEnabled(preferences);
+        boolean enabled = com.jingfei.douyin.FilterPreferences.readModuleEnabled(preferences);
         boolean changed = moduleEnabled != enabled;
         moduleEnabled = enabled;
-        blockDoubleTap = com.zz.douyin.FilterPreferences.readBlockDoubleTap(preferences);
-        immersiveEnabled = com.zz.douyin.FilterPreferences.readImmersiveEnabled(preferences);
-        showDanmaku = com.zz.douyin.FilterPreferences.readShowDanmaku(preferences);
+        blockDoubleTap = com.jingfei.douyin.FilterPreferences.readBlockDoubleTap(preferences);
+        immersiveEnabled = com.jingfei.douyin.FilterPreferences.readImmersiveEnabled(preferences);
+        showDanmaku = com.jingfei.douyin.FilterPreferences.readShowDanmaku(preferences);
         openCommentsOnDoubleTap =
-                com.zz.douyin.FilterPreferences.readDoubleTapComments(preferences);
+                com.jingfei.douyin.FilterPreferences.readDoubleTapComments(preferences);
         MAIN.post(() -> {
             if (changed) {
                 touchGestureToken++;

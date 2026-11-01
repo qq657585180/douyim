@@ -1,4 +1,4 @@
-package com.zz.douyin.hook;
+package com.jingfei.douyin.hook;
 
 import android.media.AudioFormat;
 import android.media.MediaCodec;

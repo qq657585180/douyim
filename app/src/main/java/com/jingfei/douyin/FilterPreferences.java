@@ -1,4 +1,4 @@
-package com.zz.douyin;
+package com.jingfei.douyin;
 
 import android.content.SharedPreferences;
 
