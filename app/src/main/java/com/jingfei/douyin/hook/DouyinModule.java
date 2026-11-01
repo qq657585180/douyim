@@ -69,6 +69,26 @@ public final class DouyinModule extends XposedModule {
                 "player tracker",
                 () -> PlayerHooks.install(this, param.getClassLoader())
         );
+        installSubsystem("playback strategy",
+                () -> PlaybackStrategy.install(this, param.getClassLoader()));
+        installSubsystem("comment enhancer",
+                () -> CommentEnhancer.install(this, param.getClassLoader()));
+        installSubsystem("message privacy",
+                () -> MessagePrivacy.install(this, param.getClassLoader()));
+        installSubsystem("purify enhancer",
+                () -> PurifyEnhancer.install(this, param.getClassLoader()));
+        installSubsystem("theme manager",
+                () -> ThemeManager.install(this, param.getClassLoader()));
+        installSubsystem("glass ui",
+                () -> GlassUi.install(this, param.getClassLoader()));
+        installSubsystem("download ext",
+                () -> DownloadExt.install(this, param.getClassLoader()));
+        installSubsystem("live enhancer",
+                () -> LiveEnhancer.install(this, param.getClassLoader()));
+        installSubsystem("profile enhancer",
+                () -> ProfileEnhancer.install(this, param.getClassLoader()));
+        installSubsystem("webdav sync",
+                () -> WebDavSync.install(this, param.getClassLoader()));
         log(Log.INFO, TAG, "hook installation finished for " + param.getPackageName());
     }
 

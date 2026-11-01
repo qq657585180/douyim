@@ -1,6 +1,7 @@
 package com.jingfei.douyin;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -17,6 +18,8 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.jingfei.douyin.prefs.SettingMeta;
 
 import io.github.libxposed.service.XposedService;
 
@@ -85,6 +88,8 @@ public final class MainActivity extends Activity
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.topMargin = dp(4);
         root.addView(subtitle, subtitleParams);
+
+        addGroupEntries(root);
 
         serviceStatus = text("正在连接 LSPosed 服务…", 13, TEXT_SECONDARY);
         LinearLayout.LayoutParams statusParams = matchWrap();
@@ -329,6 +334,50 @@ public final class MainActivity extends Activity
                 keywordInput.getText().toString().trim()
         ).apply();
         Toast.makeText(this, "关键词已保存", Toast.LENGTH_SHORT).show();
+    }
+
+
+    private void addGroupEntries(LinearLayout root) {
+        TextView groupHeader = sectionTitle("功能组");
+        LinearLayout.LayoutParams groupHeaderParams = matchWrap();
+        groupHeaderParams.topMargin = dp(24);
+        root.addView(groupHeader, groupHeaderParams);
+
+        LinearLayout groupCard = card();
+        LinearLayout.LayoutParams groupCardParams = matchWrap();
+        groupCardParams.topMargin = dp(10);
+        root.addView(groupCard, groupCardParams);
+
+        String[][] groups = SettingMeta.GROUPS;
+        for (int i = 0; i < groups.length; i++) {
+            final String group = groups[i][0];
+            String label = groups[i][1];
+            int count = SettingMeta.forGroup(group).size();
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(16), dp(12), dp(16), dp(12));
+            row.setClickable(true);
+            row.setFocusable(true);
+            row.setOnClickListener(v -> openGroup(group));
+
+            TextView groupLabel = text(label, 16, TEXT_PRIMARY);
+            groupLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            row.addView(groupLabel, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            TextView countView = text(count + " 项 ›", 13, TEXT_SECONDARY);
+            row.addView(countView, wrapWrap());
+            groupCard.addView(row, matchWrap());
+            if (i < groups.length - 1) {
+                addDivider(groupCard);
+            }
+        }
+    }
+
+    private void openGroup(String group) {
+        Intent intent = new Intent(this, GroupSettingsActivity.class);
+        intent.putExtra("group", group);
+        startActivity(intent);
     }
 
     private void setControlsEnabled(boolean enabled) {
