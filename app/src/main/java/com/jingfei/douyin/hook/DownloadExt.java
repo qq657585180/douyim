@@ -56,6 +56,9 @@ final class DownloadExt {
         boolean showNotification = DownloadPrefs.getBoolean(
                 prefs, DownloadPrefs.KEY_DOWNLOAD_INTERACTION_2C25D425DA, true);
         VideoDownloader.setShowDownloadNotification(showNotification);
+        boolean confirmFileName = DownloadPrefs.getBoolean(
+                prefs, DownloadPrefs.KEY_DOWNLOAD_INTERACTION_60B3A39899, false);
+        VideoDownloader.setConfirmFileNameBeforeSave(confirmFileName);
     }
 
     static boolean bool(String key, boolean def) {

@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import java.io.File;
@@ -95,6 +96,13 @@ final class VideoDownloader {
     }
 
     private static String pathDateFormat;
+
+    /** 由 DownloadExt 注入抖X“保存前确认文件名”（download_interaction.60b3a39899）设置。 */
+    static void setConfirmFileNameBeforeSave(boolean confirm) {
+        confirmFileNameBeforeSave = confirm;
+    }
+
+    private static boolean confirmFileNameBeforeSave;
 
     /** 拼出 MediaStore RELATIVE_PATH；开启“系统相册”时按 MIME 落到相册/音乐目录。 */
     private static String downloadRelativePath(String mimeType) {
@@ -243,6 +251,54 @@ final class VideoDownloader {
 
         Context context = activity.getApplicationContext();
         String baseName = buildBaseName(snapshot.aid);
+        // 抖X"保存前确认文件名"：先弹窗让用户确认/修改文件名再下载。
+        if (confirmFileNameBeforeSave) {
+            confirmFileName(activity, snapshot, kind, refresher, baseName);
+            return;
+        }
+        startDownload(activity, snapshot, kind, refresher, baseName);
+    }
+
+    /** 弹出文件名确认框，用户确认后开始下载。 */
+    private static void confirmFileName(
+            Activity activity,
+            FeedContentTracker.Snapshot snapshot,
+            Kind kind,
+            SnapshotSupplier refresher,
+            String baseName) {
+        EditText input = new EditText(activity);
+        input.setText(baseName);
+        input.setSingleLine(true);
+        input.setSelection(input.length());
+        new AlertDialog.Builder(activity)
+                .setTitle("保存文件名")
+                .setMessage(kind.label + "将保存到 Download/")
+                .setView(input)
+                .setPositiveButton("下载", (dialog, which) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        name = baseName;
+                    }
+                    startDownload(activity, snapshot, kind, refresher, sanitizeFileName(name));
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 清理文件名中的非法字符。 */
+    private static String sanitizeFileName(String name) {
+        String cleaned = name.replaceAll("[\\/:*?"<>|\p{Cntrl}]", "").trim();
+        return cleaned.isEmpty() ? "douyin_download" : cleaned;
+    }
+
+    /** 实际开始下载（原 download 的主体逻辑）。 */
+    private static void startDownload(
+            Activity activity,
+            FeedContentTracker.Snapshot snapshot,
+            Kind kind,
+            SnapshotSupplier refresher,
+            String baseName) {
+        Context context = activity.getApplicationContext();
         String key = snapshot.aid + ':' + kind
                 + ':' + (snapshot.playUrls.isEmpty() ? "" : snapshot.playUrls.get(0).url.hashCode());
         if (!ACTIVE.add(key)) {
