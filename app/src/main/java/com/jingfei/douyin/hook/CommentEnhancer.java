@@ -223,7 +223,7 @@ final class CommentEnhancer {
             }
         }
         // 自定义评论背景（comment_appearance.ebbd320f5f + 882fe2e842 + 9eaa61edf0）
-        if (bool(CommentPrefs.KEY_COMMENT_APPEARANCE_EBDD320F5F, false)) {
+        if (bool(CommentPrefs.KEY_COMMENT_APPEARANCE_EBBD320F5F, false)) {
             int bgColor = 0;
             String bgText = string(
                     CommentPrefs.KEY_COMMENT_APPEARANCE_882FE2E842, null);

@@ -124,7 +124,7 @@ final class PlaybackTimeOverlay {
         return tv;
     }
 
-    private static void remove() {
+    static void remove() {
         if (overlayRef == null) {
             return;
         }
@@ -184,7 +184,8 @@ final class PlaybackTimeOverlay {
 
     private static int dp(int value) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
-                (appContext != null ? appContext : android.content.res.Resources.getSystem())
-                        .getResources().getDisplayMetrics()));
+                (appContext != null ? appContext.getResources()
+                        : android.content.res.Resources.getSystem())
+                        .getDisplayMetrics()));
     }
 }
