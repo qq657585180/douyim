@@ -2,6 +2,7 @@ package com.jingfei.douyin.hook;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -122,6 +123,8 @@ final class CommentEnhancer {
                     if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_FB9A1F8613, false)) {
                         guardReplyClick(activity, panel);
                     }
+                    // 评论区外观：文字颜色 / 自定义背景（抖X comment_appearance.*）
+                    applyCommentAppearance(panel);
                 } else {
                     commentPanelOpen = false;
                 }
@@ -194,6 +197,67 @@ final class CommentEnhancer {
         }
         if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_008507ACCF, false)) {
             hideByText(panel, "踩", 1, false);
+        }
+    }
+
+    /** 评论区外观：评论文字颜色 + 自定义评论背景（颜色/透明度）。
+     *  仅当用户在抖X显式开启对应设置时生效，每轮扫描实时应用。 */
+    private static void applyCommentAppearance(View panel) {
+        if (panel == null) {
+            return;
+        }
+        // 评论文字颜色（comment_appearance.503606eb6d）
+        String colorText = string(CommentPrefs.KEY_COMMENT_APPEARANCE_503606EB6D, null);
+        if (colorText != null && !colorText.isEmpty()) {
+            try {
+                setCommentTextColor(panel, Color.parseColor(colorText));
+            } catch (IllegalArgumentException ignored) {
+                // 非法颜色串忽略
+            }
+        } else if (prefs != null
+                && prefs.contains(CommentPrefs.KEY_COMMENT_APPEARANCE_503606EB6D)) {
+            int color = prefs.getInt(
+                    CommentPrefs.KEY_COMMENT_APPEARANCE_503606EB6D, 0);
+            if (color != 0) {
+                setCommentTextColor(panel, color);
+            }
+        }
+        // 自定义评论背景（comment_appearance.ebbd320f5f + 882fe2e842 + 9eaa61edf0）
+        if (bool(CommentPrefs.KEY_COMMENT_APPEARANCE_EBDD320F5F, false)) {
+            int bgColor = 0;
+            String bgText = string(
+                    CommentPrefs.KEY_COMMENT_APPEARANCE_882FE2E842, null);
+            if (bgText != null && !bgText.isEmpty()) {
+                try {
+                    bgColor = Color.parseColor(bgText);
+                } catch (IllegalArgumentException ignored) {
+                    // 非法颜色串忽略
+                }
+            } else {
+                bgColor = integer(
+                        CommentPrefs.KEY_COMMENT_APPEARANCE_882FE2E842, 0);
+            }
+            int opacity = integer(
+                    CommentPrefs.KEY_COMMENT_APPEARANCE_9EAA61EDF0, 100);
+            if (opacity >= 0 && opacity <= 100) {
+                bgColor = (bgColor & 0x00FFFFFF) | ((opacity * 255 / 100) << 24);
+            }
+            if (bgColor != 0) {
+                panel.setBackgroundColor(bgColor);
+            }
+        }
+    }
+
+    /** 递归设置评论项内所有文字控件的颜色 */
+    private static void setCommentTextColor(View view, int color) {
+        if (view instanceof TextView) {
+            ((TextView) view).setTextColor(color);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                setCommentTextColor(group.getChildAt(i), color);
+            }
         }
     }
 

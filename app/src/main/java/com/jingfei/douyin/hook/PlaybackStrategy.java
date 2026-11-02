@@ -105,6 +105,26 @@ final class PlaybackStrategy {
                         false, null, 0, 0, 0, 0, 0);
             }
         }
+        // 抖X"弹幕增强"：屏蔽关键词（danmaku.1d6c3a1841）+ 弹幕颜色（danmaku.9daa16e0ab）。
+        boolean danmakuFilter = PlaybackPrefs.getBoolean(
+                prefs, PlaybackPrefs.KEY_DANMAKU_83D6B31D9A, false)
+                && prefs.contains(PlaybackPrefs.KEY_DANMAKU_1D6C3A1841);
+        String danmakuKeywords = prefs.getString(
+                PlaybackPrefs.KEY_DANMAKU_1D6C3A1841, "");
+        int danmakuColor = 0;
+        String colorText = prefs.getString(
+                PlaybackPrefs.KEY_DANMAKU_9DAA16E0AB, null);
+        if (colorText != null && !colorText.isEmpty()) {
+            try {
+                danmakuColor = android.graphics.Color.parseColor(colorText);
+            } catch (IllegalArgumentException ignored) {
+                // 非法颜色串忽略
+            }
+        } else if (prefs.contains(PlaybackPrefs.KEY_DANMAKU_9DAA16E0AB)) {
+            danmakuColor = prefs.getInt(
+                    PlaybackPrefs.KEY_DANMAKU_9DAA16E0AB, 0);
+        }
+        DanmakuEnhancer.applyPrefs(danmakuFilter, danmakuKeywords, danmakuColor);
     }
 
     /** 解析颜色字符串（#RRGGBB），失败时回退默认值。 */

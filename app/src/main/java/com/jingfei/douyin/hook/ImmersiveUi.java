@@ -762,6 +762,8 @@ final class ImmersiveUi {
         if (activity != null) {
             PlaybackTimeOverlay.update(activity);
         }
+        // 弹幕增强：关键词过滤 + 弹幕颜色（抖X danmaku.*）
+        DanmakuEnhancer.update(decor);
 
         if (PlaybackState.consumePlaybackError()) {
             onPlaybackCompleted("playback error");
