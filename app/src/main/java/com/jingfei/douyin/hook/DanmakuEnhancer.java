@@ -17,15 +17,22 @@ import java.util.regex.Pattern;
  */
 final class DanmakuEnhancer {
     private static volatile boolean filterEnabled;
+    private static volatile boolean dedupeEnabled;
     private static volatile Pattern keywordPattern;
     private static volatile int danmakuColor = 0;
+    /** 最近出现的弹幕文本（用于重复弹幕去重）。 */
+    private static final java.util.LinkedHashSet<String> SEEN =
+            new java.util.LinkedHashSet<>();
+    private static final int MAX_SEEN = 200;
 
     private DanmakuEnhancer() {
     }
 
     /** 由 PlaybackStrategy 注入弹幕设置。 */
-    static void applyPrefs(boolean enabled, String keywords, int color) {
+    static void applyPrefs(boolean enabled, String keywords, int color,
+                           boolean dedupe) {
         filterEnabled = enabled;
+        dedupeEnabled = dedupe;
         if (keywords != null && !keywords.isEmpty()) {
             StringBuilder sb = new StringBuilder();
             String[] parts = keywords.split("[,，;；、\n/|]");
@@ -100,11 +107,28 @@ final class DanmakuEnhancer {
         if (tv.getVisibility() != View.VISIBLE) {
             return;
         }
-        if (filterEnabled && keywordPattern != null) {
-            CharSequence cs = tv.getText();
-            if (cs != null && keywordPattern.matcher(cs.toString()).find()) {
+        CharSequence cs = tv.getText();
+        if (cs == null) {
+            return;
+        }
+        String text = cs.toString();
+        if (filterEnabled && keywordPattern != null
+                && keywordPattern.matcher(text).find()) {
+            tv.setVisibility(View.GONE);
+            return;
+        }
+        if (dedupeEnabled) {
+            if (SEEN.contains(text)) {
                 tv.setVisibility(View.GONE);
                 return;
+            }
+            SEEN.add(text);
+            while (SEEN.size() > MAX_SEEN) {
+                java.util.Iterator<String> it = SEEN.iterator();
+                if (it.hasNext()) {
+                    it.next();
+                    it.remove();
+                }
             }
         }
         if (danmakuColor != 0) {

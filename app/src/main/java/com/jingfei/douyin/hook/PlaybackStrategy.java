@@ -105,12 +105,15 @@ final class PlaybackStrategy {
                         false, null, 0, 0, 0, 0, 0);
             }
         }
-        // 抖X"弹幕增强"：屏蔽关键词（danmaku.1d6c3a1841）+ 弹幕颜色（danmaku.9daa16e0ab）。
+        // 抖X"弹幕增强"：屏蔽关键词（danmaku.1d6c3a1841）+ 弹幕颜色（danmaku.9daa16e0ab）
+        // + 重复弹幕去重（danmaku.01c0117c23）。
         boolean danmakuFilter = PlaybackPrefs.getBoolean(
                 prefs, PlaybackPrefs.KEY_DANMAKU_83D6B31D9A, false)
                 && prefs.contains(PlaybackPrefs.KEY_DANMAKU_1D6C3A1841);
         String danmakuKeywords = prefs.getString(
                 PlaybackPrefs.KEY_DANMAKU_1D6C3A1841, "");
+        boolean danmakuDedupe = PlaybackPrefs.getBoolean(
+                prefs, PlaybackPrefs.KEY_DANMAKU_01C0117C23, false);
         int danmakuColor = 0;
         String colorText = prefs.getString(
                 PlaybackPrefs.KEY_DANMAKU_9DAA16E0AB, null);
@@ -124,7 +127,8 @@ final class PlaybackStrategy {
             danmakuColor = prefs.getInt(
                     PlaybackPrefs.KEY_DANMAKU_9DAA16E0AB, 0);
         }
-        DanmakuEnhancer.applyPrefs(danmakuFilter, danmakuKeywords, danmakuColor);
+        DanmakuEnhancer.applyPrefs(
+                danmakuFilter, danmakuKeywords, danmakuColor, danmakuDedupe);
     }
 
     /** 解析颜色字符串（#RRGGBB），失败时回退默认值。 */
