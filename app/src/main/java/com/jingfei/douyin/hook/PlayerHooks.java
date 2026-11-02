@@ -268,4 +268,3 @@ final class PlayerHooks {
         return null;
     }
 }
-}
