@@ -65,8 +65,31 @@ final class VideoDownloader {
         downloadSubdirectory = subdirectory;
     }
 
-    /** 拼出带子目录的 MediaStore RELATIVE_PATH，空子目录时回退 Download 根目录。 */
-    private static String downloadRelativePath() {
+    /** 由 DownloadExt 注入抖X“改回系统相册／音乐”（paths.1b6cfe60d5）设置。 */
+    static void setSaveToSystemAlbum(boolean enabled) {
+        saveToSystemAlbum = enabled;
+    }
+
+    private static boolean saveToSystemAlbum;
+
+    /** 由 DownloadExt 注入抖X“显示下载通知”（download_interaction.2c25d425da）设置。 */
+    static void setShowDownloadNotification(boolean show) {
+        showDownloadNotification = show;
+    }
+
+    private static boolean showDownloadNotification = true;
+
+    /** 拼出 MediaStore RELATIVE_PATH；开启“系统相册”时按 MIME 落到相册/音乐目录。 */
+    private static String downloadRelativePath(String mimeType) {
+        if (saveToSystemAlbum) {
+            if (mimeType != null && mimeType.startsWith("audio/")) {
+                return Environment.DIRECTORY_MUSIC;
+            }
+            if (mimeType != null && mimeType.startsWith("image/")) {
+                return Environment.DIRECTORY_PICTURES;
+            }
+            return Environment.DIRECTORY_MOVIES;
+        }
         String sub = downloadSubdirectory;
         if (sub == null || sub.isEmpty()) {
             return Environment.DIRECTORY_DOWNLOADS;
@@ -76,6 +99,20 @@ final class VideoDownloader {
             return Environment.DIRECTORY_DOWNLOADS;
         }
         return Environment.DIRECTORY_DOWNLOADS + "/" + clean;
+    }
+
+    /** 开启“系统相册”时用相册/音乐 ContentUri，否则用 Downloads 集合。 */
+    private static Uri downloadsUriFor(String mimeType) {
+        if (saveToSystemAlbum) {
+            if (mimeType != null && mimeType.startsWith("audio/")) {
+                return MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+            }
+            if (mimeType != null && mimeType.startsWith("image/")) {
+                return MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            }
+            return MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        }
+        return MediaStore.Downloads.EXTERNAL_CONTENT_URI;
     }
 
     static void chooseDownload(
@@ -440,11 +477,11 @@ final class VideoDownloader {
                 values.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
                 values.put(
                         MediaStore.MediaColumns.RELATIVE_PATH,
-                        downloadRelativePath()
+                        downloadRelativePath("video/mp4")
                 );
                 values.put(MediaStore.MediaColumns.IS_PENDING, 1);
                 destination = resolver.insert(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        downloadsUriFor("video/mp4"),
                         values
                 );
                 if (destination == null) {
@@ -528,7 +565,9 @@ final class VideoDownloader {
         request.setAllowedOverMetered(true);
         request.setAllowedOverRoaming(true);
         request.setNotificationVisibility(
-                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                showDownloadNotification
+                        ? DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+                        : DownloadManager.Request.VISIBILITY_HIDDEN
         );
         String sub = downloadSubdirectory;
         String downloadFileName = fileName;
@@ -539,7 +578,7 @@ final class VideoDownloader {
             }
         }
         request.setDestinationInExternalPublicDir(
-                Environment.DIRECTORY_DOWNLOADS,
+                saveToSystemAlbum ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_DOWNLOADS,
                 downloadFileName
         );
         addRequestHeaders(request);
@@ -627,7 +666,7 @@ final class VideoDownloader {
             return;
         }
         File directory = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS
+                saveToSystemAlbum ? Environment.DIRECTORY_MOVIES : Environment.DIRECTORY_DOWNLOADS
         );
         String sub = downloadSubdirectory;
         if (sub != null && !sub.isEmpty()) {
@@ -669,9 +708,9 @@ final class VideoDownloader {
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
         values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH, downloadRelativePath());
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, downloadRelativePath(mimeType));
         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-        Uri destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        Uri destination = resolver.insert(downloadsUriFor(mimeType), values);
         if (destination == null) throw new IOException("无法在 Download 目录创建文件");
         boolean published = false;
         try {

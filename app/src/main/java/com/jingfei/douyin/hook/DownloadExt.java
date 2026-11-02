@@ -45,6 +45,12 @@ final class DownloadExt {
                     prefs, DownloadPrefs.KEY_PATHS_0B7E287692, "");
         }
         VideoDownloader.setDownloadSubdirectory(subdirectory);
+        boolean systemAlbum = DownloadPrefs.getBoolean(
+                prefs, DownloadPrefs.KEY_PATHS_1B6CFE60D5, false);
+        VideoDownloader.setSaveToSystemAlbum(systemAlbum);
+        boolean showNotification = DownloadPrefs.getBoolean(
+                prefs, DownloadPrefs.KEY_DOWNLOAD_INTERACTION_2C25D425DA, true);
+        VideoDownloader.setShowDownloadNotification(showNotification);
     }
 
     static boolean bool(String key, boolean def) {

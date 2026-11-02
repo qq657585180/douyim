@@ -249,6 +249,13 @@ final class FeedContentTracker {
         purifyOverride = override;
     }
 
+    /** 最低点赞数阈值（抖X feed_thresholds.a2065cac44）；0 表示不启用点赞数过滤。 */
+    static void setMinDiggCount(long min) {
+        minDiggCount = Math.max(0L, min);
+    }
+
+    private static long minDiggCount;
+
     private static FilterPreferences.Values activeFilterSettings() {
         FilterPreferences.Values override = purifyOverride;
         return override != null ? override : filterSettings;
@@ -309,6 +316,8 @@ final class FeedContentTracker {
                 textValue(invokeNoArg(type, aweme, "getProcessedDesc")),
                 textValue(invokeNoArg(type, aweme, "getEllipsizeDesc"))
         );
+        long diggCount = longValue(
+                readField(type, aweme, "diggCount"), 0L);
         boolean photo =
                 hostImage
                         || hostMultiImage
@@ -357,6 +366,9 @@ final class FeedContentTracker {
             } else if (keyword != null) {
                 reason = "video keyword: " + keyword;
             }
+            if (minDiggCount > 0 && diggCount < minDiggCount) {
+                reason = "likes below threshold: " + diggCount + " < " + minDiggCount;
+            }
         }
         return new Snapshot(
                 aid,
@@ -376,6 +388,7 @@ final class FeedContentTracker {
                 photoContent,
                 title,
                 description,
+                diggCount,
                 reason,
                 playUrls,
                 adMarkers
@@ -712,6 +725,10 @@ final class FeedContentTracker {
         return value instanceof Number number ? number.intValue() : fallback;
     }
 
+    private static long longValue(Object value, long fallback) {
+        return value instanceof Number number ? number.longValue() : fallback;
+    }
+
     private static boolean booleanValue(Object value) {
         if (value instanceof Boolean bool) {
             return bool;
@@ -761,6 +778,7 @@ final class FeedContentTracker {
         final boolean photoContent;
         final String title;
         final String description;
+        final long diggCount;
         final String filterReason;
         final List<PlayUrl> playUrls;
         final String adMarkers;
@@ -786,6 +804,7 @@ final class FeedContentTracker {
                 boolean photoContent,
                 String title,
                 String description,
+                long diggCount,
                 String filterReason,
                 List<PlayUrl> playUrls,
                 String adMarkers
@@ -807,6 +826,7 @@ final class FeedContentTracker {
             this.photoContent = photoContent;
             this.title = title;
             this.description = description;
+            this.diggCount = diggCount;
             this.filterReason = filterReason;
             this.playUrls = playUrls;
             this.adMarkers = adMarkers;
