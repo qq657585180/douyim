@@ -45,6 +45,7 @@ final class PurifyEnhancer {
             FeedContentTracker.setMinDiggCount(0);
             FeedContentTracker.setDurationBounds(0, 0);
             FeedContentTracker.setStatThresholds(0, 0, 0);
+            FeedContentTracker.setMaxAgeDays(0);
             FeedContentTracker.applyPurifyOverride(null);
             return;
         }
@@ -65,9 +66,12 @@ final class PurifyEnhancer {
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_6AE0300933, 0);
         long minShare = PurifyPrefs.getInt(
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_E885E7E1B6, 0);
+        int maxAgeDays = PurifyPrefs.getInt(
+                prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_61B4880C99, 0);
         FeedContentTracker.setMinDiggCount(minDigg);
         FeedContentTracker.setDurationBounds(minDuration, maxDuration);
         FeedContentTracker.setStatThresholds(minComment, minCollect, minShare);
+        FeedContentTracker.setMaxAgeDays(maxAgeDays);
         FeedContentTracker.applyPurifyOverride(
                 new FilterPreferences.Values(skipAds, false, false, false, keywords));
     }

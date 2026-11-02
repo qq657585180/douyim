@@ -266,12 +266,18 @@ final class FeedContentTracker {
         minShareCount = Math.max(0L, minShare);
     }
 
+    /** 仅保留最近 N 天（抖X feed_thresholds.61b4880c99）；0 表示不过滤时间。 */
+    static void setMaxAgeDays(int days) {
+        maxAgeDays = Math.max(0, days);
+    }
+
     private static long minDiggCount;
     private static long minDurationMs;
     private static long maxDurationMs;
     private static long minCommentCount;
     private static long minCollectCount;
     private static long minShareCount;
+    private static int maxAgeDays;
 
     private static FilterPreferences.Values activeFilterSettings() {
         FilterPreferences.Values override = purifyOverride;
@@ -335,6 +341,9 @@ final class FeedContentTracker {
         );
         long diggCount = longValue(
                 readField(type, aweme, "diggCount"), 0L);
+        // 作品发布时间（秒）：抖X“仅保留最近几天”过滤依据。读不到时保持 0，不参与过滤。
+        long createTime = longValue(
+                readField(type, aweme, "createTime"), 0L);
         // 视频时长（毫秒）：抖X feed 阈值过滤（时长下限/上限）。读不到时保持 0，不参与过滤。
         long durationMs = 0L;
         if (video != null) {
@@ -424,6 +433,12 @@ final class FeedContentTracker {
             } else if (minShareCount > 0 && shareCount < minShareCount) {
                 reason = "shares below threshold: "
                         + shareCount + " < " + minShareCount;
+            }
+            if (maxAgeDays > 0 && createTime > 0) {
+                long ageSeconds = System.currentTimeMillis() / 1000L - createTime;
+                if (ageSeconds > maxAgeDays * 86400L) {
+                    reason = "older than " + maxAgeDays + " days";
+                }
             }
         }
         return new Snapshot(
