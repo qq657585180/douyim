@@ -324,6 +324,32 @@ final class PlaybackState {
         return pauseOnCompletion;
     }
 
+    /** 打开评论区时暂停视频（抖X comment_interaction.6ef5a30dbc）。
+     *  由 CommentEnhancer 在评论面板打开瞬间调用；模拟用户暂停以恢复系统 UI。 */
+    static synchronized void pauseForComments() {
+        if (userPaused) {
+            return;
+        }
+        Object player = engine();
+        if (player == null || playbackState(player) != 1) {
+            return;
+        }
+        pausePlayer(player);
+        playing = false;
+        long now = SystemClock.uptimeMillis();
+        pausedAt = now;
+        userPaused = true;
+        userPausedAt = now;
+        userPausedEngine = new WeakReference<>(player);
+        userPausedAid = null;
+        clearPendingSwitchPlayer();
+        expectedVideoSwitchUntil = 0L;
+        autoSwitchUntil = 0L;
+        generation++;
+        Log.i(DouyinModule.TAG, "playback=paused-by-comments");
+        ImmersiveUi.onPlaybackChanged(false);
+    }
+
     /** 反射调用播放器 pause()，失败则忽略（播放器接口差异由保护模式兜底）。 */
     private static void pausePlayer(Object player) {
         if (player == null) {

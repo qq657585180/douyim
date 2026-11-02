@@ -35,6 +35,8 @@ final class CommentEnhancer {
     private static final Runnable SCAN = CommentEnhancer::scanComments;
     private static final long SCAN_INTERVAL_MS = 1000L;
     private static volatile boolean scanning;
+    /** 评论面板当前是否处于打开状态（用于检测打开瞬间）。 */
+    private static volatile boolean commentPanelOpen;
 
     /** 评论区子项的时间/操作文本特征，用于区分评论项与视频项 */
     private static final Pattern TIME_PATTERN = Pattern.compile(
@@ -80,6 +82,7 @@ final class CommentEnhancer {
         if (currentActivity != null && currentActivity.get() == activity) {
             currentActivity = null;
         }
+        commentPanelOpen = false;
     }
 
     private static void scanComments() {
@@ -92,6 +95,22 @@ final class CommentEnhancer {
             View decor = activity.getWindow().getDecorView();
             if (decor != null) {
                 View panel = resolveCommentPanel(decor);
+                if (panel != null) {
+                    // 检测评论面板打开瞬间：暂停视频（抖X comment_interaction.6ef5a30dbc）
+                    if (!commentPanelOpen) {
+                        commentPanelOpen = true;
+                        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_6EF5A30DBC, false)) {
+                            PlaybackState.pauseForComments();
+                        }
+                    }
+                    // 空评论不自动弹出输入框（抖X comment_interaction.c0ce370b93）
+                    if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_C0CE370B93, false)
+                            && !hasCommentItems(panel)) {
+                        suppressEmptyInput(activity, panel);
+                    }
+                } else {
+                    commentPanelOpen = false;
+                }
                 View target = panel != null ? panel : decor;
                 applyUiVisibility(target);
                 scanView(target);
@@ -196,6 +215,41 @@ final class CommentEnhancer {
             }
         }
         return count;
+    }
+
+    /** 评论区是否存在评论项（用于“空评论不自动弹出输入框”判断）。 */
+    private static boolean hasCommentItems(View view) {
+        if (isRecyclerView(view)) {
+            ViewGroup rv = (ViewGroup) view;
+            for (int i = 0; i < rv.getChildCount(); i++) {
+                View child = rv.getChildAt(i);
+                if (child != null && isCommentItem(child)) {
+                    return true;
+                }
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (hasCommentItems(group.getChildAt(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 空评论时抑制输入框自动弹出：清除焦点并收起软键盘。 */
+    private static void suppressEmptyInput(Activity activity, View panel) {
+        View edit = findInstance(panel, EditText.class);
+        if (edit == null || !edit.hasFocus()) {
+            return;
+        }
+        edit.clearFocus();
+        Object service = activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
+        if (service instanceof android.view.inputmethod.InputMethodManager manager) {
+            manager.hideSoftInputFromWindow(edit.getWindowToken(), 0);
+        }
     }
 
     /** 按文本隐藏视图：找到文本命中项后向上提升 levels 层隐藏容器 */
