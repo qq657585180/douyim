@@ -137,7 +137,7 @@ final class CommentEnhancer {
         return null;
     }
 
-    /** 评论区 UI 隐藏：广告/相关搜索/底部输入栏/回复按钮 */
+    /** 评论区 UI 隐藏：广告/相关搜索/底部输入栏/回复按钮/分页加载/赞踩按钮 */
     private static void applyUiVisibility(View panel) {
         if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_EA45E2F234, false)) {
             hideByText(panel, "广告", 2, true);
@@ -148,6 +148,19 @@ final class CommentEnhancer {
         }
         if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_51E3399312, false)) {
             hideByText(panel, "回复", 1, false);
+        }
+        // 评论分页隐藏（抖X comments.84f54a63d8）：隐藏“查看更多/加载更多/查看全部评论”
+        if (bool(CommentPrefs.KEY_COMMENTS_84F54A63D8, false)) {
+            hideByText(panel, "查看更多", 1, true);
+            hideByText(panel, "加载更多", 1, true);
+            hideByText(panel, "查看全部评论", 1, true);
+        }
+        // 隐藏点赞/点踩按钮（抖X comment_interaction.1ffb4cb3f8 / 008507accf）
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_1FFB4CB3F8, false)) {
+            hideByText(panel, "赞", 1, false);
+        }
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_008507ACCF, false)) {
+            hideByText(panel, "踩", 1, false);
         }
     }
 
