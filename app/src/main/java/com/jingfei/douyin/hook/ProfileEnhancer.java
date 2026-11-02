@@ -3,6 +3,8 @@ package com.jingfei.douyin.hook;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import com.jingfei.douyin.prefs.ProfilePrefs;
+
 /**
  * 个人主页（douyin_profile）Hook 子系统。已配置读取；默认作品页/作品视图/主页工具等 Hook 依赖抖音主页内部布局，暂无稳定 API 依据，保持 TODO。
  */
@@ -17,6 +19,11 @@ final class ProfileEnhancer {
         prefs = p;
         p.registerOnSharedPreferenceChangeListener(LISTENER);
         try {
+            // 主页精确数量 + 作品网格精确点赞（profile.exact_counts / exact_grid_likes）
+            ExactNumbers.setProfileEnabled(ProfilePrefs.getBoolean(
+                    p, ProfilePrefs.KEY_PROFILE_EXACT_COUNTS, false));
+            ExactNumbers.setGridLikesEnabled(ProfilePrefs.getBoolean(
+                    p, ProfilePrefs.KEY_PROFILE_EXACT_GRID_LIKES, false));
             // TODO: 默认作品页/作品视图/主页工具 Hook
             module.log(Log.INFO, DouyinModule.TAG,
                     "ProfileEnhancer installed (douyin_profile)");

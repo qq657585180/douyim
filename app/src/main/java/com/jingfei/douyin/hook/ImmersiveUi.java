@@ -126,6 +126,12 @@ final class ImmersiveUi {
     private static long filterBurstStart;
     private static int filterBurstCount;
     private static long filterSuspendedUntil;
+    /** 隐藏视频进度条（抖X progress.hidden）。 */
+    private static volatile boolean hideProgressEnabled;
+    /** 隐藏首页搜索入口（抖X home.d23c896621）。 */
+    private static volatile boolean hideHomeSearch;
+    /** 透明系统导航栏（抖X home.9902412e18）。 */
+    private static volatile boolean transparentNavBar;
 
     private ImmersiveUi() {
     }
@@ -330,6 +336,21 @@ final class ImmersiveUi {
     /** 由 PlaybackStrategy 注入抖X自动连播设置（douyin_playback）。 */
     static void setAutoPlayEnabled(boolean enabled) {
         autoPlayEnabled = enabled;
+    }
+
+    /** 抖X progress.hidden：隐藏视频进度条。 */
+    static void setHideProgressEnabled(boolean enabled) {
+        hideProgressEnabled = enabled;
+    }
+
+    /** 抖X home.d23c896621：隐藏首页搜索入口。 */
+    static void setHideHomeSearch(boolean enabled) {
+        hideHomeSearch = enabled;
+    }
+
+    /** 抖X home.9902412e18：透明系统导航栏。 */
+    static void setTransparentNavBar(boolean enabled) {
+        transparentNavBar = enabled;
     }
 
     /** 由 ThemeManager 注入抖X外观覆盖（douyin_appearance）。null 表示不覆盖该字段。 */
@@ -764,6 +785,17 @@ final class ImmersiveUi {
         }
         // 弹幕增强：关键词过滤 + 弹幕颜色（抖X danmaku.*）
         DanmakuEnhancer.update(decor);
+        // 显示准确数量（抖X controls.9aa386bb74 / live.0d1ad71357 /
+        // profile.exact_counts / profile.exact_grid_likes）
+        ExactNumbers.scan(decor);
+        // 隐藏视频进度条（抖X progress.hidden）
+        if (hideProgressEnabled) {
+            hideProgressBars(decor);
+        }
+        // 隐藏首页搜索入口（抖X home.d23c896621）
+        if (hideHomeSearch) {
+            hideByText(decor, "搜索", 2, true);
+        }
 
         if (PlaybackState.consumePlaybackError()) {
             onPlaybackCompleted("playback error");
@@ -1609,6 +1641,67 @@ final class ImmersiveUi {
         }
     }
 
+    /** 隐藏视频进度条（抖X progress.hidden）。 */
+    private static void hideProgressBars(View root) {
+        if (root == null) {
+            return;
+        }
+        hideProgressBarsRecursive(root);
+    }
+
+    private static void hideProgressBarsRecursive(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof android.widget.SeekBar) {
+            view.setVisibility(View.GONE);
+        } else {
+            String cls = view.getClass().getName().toLowerCase();
+            if (cls.contains("seekbar")
+                    || (cls.contains("progressbar") && !cls.contains("loading"))) {
+                view.setVisibility(View.GONE);
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                hideProgressBarsRecursive(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 按文本隐藏视图：找到文本命中项后向上提升 levels 层隐藏容器。 */
+    private static boolean hideByText(View root, String target, int levels, boolean contains) {
+        if (root instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) root).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            boolean hit = contains ? text.contains(target) : text.equals(target);
+            if (hit) {
+                View cur = root;
+                for (int i = 0; i < levels && cur.getParent() instanceof ViewGroup; i++) {
+                    ViewGroup parent = (ViewGroup) cur.getParent();
+                    if (parent == null) {
+                        return true;
+                    }
+                    cur = parent;
+                }
+                if (cur != root && cur.getVisibility() == View.VISIBLE) {
+                    cur.setVisibility(View.GONE);
+                    return true;
+                }
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (hideByText(group.getChildAt(i), target, levels, contains)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static void updateGesturePaths(View root, List<View> videos) {
         GESTURE_PATHS.clear();
         collectGesturePaths(root, root, videos);
@@ -1781,7 +1874,7 @@ final class ImmersiveUi {
         }
         // 原生沉浸模式：全隐藏。抖X桥接开关：按开关只隐藏对应系统栏。
         boolean hideStatus = immersiveEnabled || hideStatusBar;
-        boolean hideNav = immersiveEnabled || hideNavBar;
+        boolean hideNav = immersiveEnabled || hideNavBar || transparentNavBar;
         int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
         if (hideStatus) {
@@ -1789,8 +1882,11 @@ final class ImmersiveUi {
                     | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
         }
         if (hideNav) {
-            flags |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            // 透明导航栏：内容延伸过去但保留导航栏可见
+            flags |= View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            if (!transparentNavBar) {
+                flags |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION;
+            }
         }
         decor.setSystemUiVisibility(
                 decor.getSystemUiVisibility() | flags

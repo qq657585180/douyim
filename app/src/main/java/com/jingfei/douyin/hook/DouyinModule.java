@@ -132,6 +132,8 @@ public final class DouyinModule extends XposedModule {
                     Object result = chain.proceed();
                     ImmersiveUi.onActivityResumed((Activity) chain.getThisObject());
                     CommentEnhancer.onActivityResumed((Activity) chain.getThisObject());
+                    MessagePrivacy.onActivityResumed((Activity) chain.getThisObject());
+                    LiveEnhancer.onActivityResumed((Activity) chain.getThisObject());
                     return result;
                 });
 
@@ -142,6 +144,8 @@ public final class DouyinModule extends XposedModule {
                 .intercept(chain -> {
                     ImmersiveUi.onActivityPaused((Activity) chain.getThisObject());
                     CommentEnhancer.onActivityPaused((Activity) chain.getThisObject());
+                    MessagePrivacy.onActivityPaused((Activity) chain.getThisObject());
+                    LiveEnhancer.onActivityPaused((Activity) chain.getThisObject());
                     return chain.proceed();
                 });
     }

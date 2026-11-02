@@ -52,6 +52,15 @@ final class ThemeManager {
                 boolIfPresent(AppearancePrefs.KEY_CONTROLS_AD_CARD),  // 隐藏广告卡片
                 boolIfPresent(AppearancePrefs.KEY_CONTROLS_REPORT_WARN) // 隐藏作者声明
         );
+        // 右侧显示真实数量（controls.9aa386bb74）→ ExactNumbers
+        ExactNumbers.setRightEnabled(AppearancePrefs.getBoolean(
+                prefs, AppearancePrefs.KEY_CONTROLS_9AA386BB74, false));
+        // 隐藏首页搜索入口（home.d23c896621）→ ImmersiveUi
+        ImmersiveUi.setHideHomeSearch(AppearancePrefs.getBoolean(
+                prefs, AppearancePrefs.KEY_HOME_D23C896621, false));
+        // 透明系统导航栏（home.9902412e18）→ ImmersiveUi
+        ImmersiveUi.setTransparentNavBar(AppearancePrefs.getBoolean(
+                prefs, AppearancePrefs.KEY_HOME_9902412E18, false));
     }
 
     /** prefs 中存在该 key 才返回布尔值，否则返回 null（不覆盖）。 */

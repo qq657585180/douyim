@@ -129,6 +129,9 @@ final class PlaybackStrategy {
         }
         DanmakuEnhancer.applyPrefs(
                 danmakuFilter, danmakuKeywords, danmakuColor, danmakuDedupe);
+        // 隐藏视频进度条（progress.hidden）→ ImmersiveUi
+        ImmersiveUi.setHideProgressEnabled(PlaybackPrefs.getBoolean(
+                prefs, PlaybackPrefs.KEY_PROGRESS_HIDDEN, false));
     }
 
     /** 解析颜色字符串（#RRGGBB），失败时回退默认值。 */

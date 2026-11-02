@@ -1,6 +1,7 @@
 package com.jingfei.douyin.hook;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Handler;
@@ -60,6 +61,9 @@ final class CommentEnhancer {
         prefs = p;
         p.registerOnSharedPreferenceChangeListener(LISTENER);
         try {
+            // 评论准确点赞数（comments.70151eae18）→ ExactNumbers
+            ExactNumbers.setCommentEnabled(CommentPrefs.getBoolean(
+                    p, CommentPrefs.KEY_COMMENTS_70151EAE18, false));
             module.log(Log.INFO, DouyinModule.TAG,
                     "CommentEnhancer installed (douyin_comment)");
         } catch (Throwable error) {
@@ -119,12 +123,14 @@ final class CommentEnhancer {
                     if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_DISABLE_SHIFT, false)) {
                         resetShift(decor);
                     }
-                    // 禁用点击评论回复（抖X comment_interaction.fb9a1f8613）
-                    if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_FB9A1F8613, false)) {
-                        guardReplyClick(activity, panel);
-                    }
+                    // 评论点击守卫：禁用回复 + 点赞/点踩前确认（抖X fb9a1f8613 / f89dd25379 / 9d018d123f）
+                    installCommentGuards(activity, panel);
                     // 评论区外观：文字颜色 / 自定义背景（抖X comment_appearance.*）
                     applyCommentAppearance(panel);
+                    // 评论准确点赞数（抖X comments.70151eae18）
+                    ExactNumbers.scanComments(panel);
+                    // 评论面板高度（抖X comment_appearance.60c73f44b9）
+                    applyPanelHeight(panel);
                 } else {
                     commentPanelOpen = false;
                 }
@@ -248,6 +254,26 @@ final class CommentEnhancer {
         }
     }
 
+    /** 评论面板高度（抖X comment_appearance.60c73f44b9，值为屏幕高度百分比）。 */
+    private static void applyPanelHeight(View panel) {
+        if (panel == null) {
+            return;
+        }
+        int pct = integer(CommentPrefs.KEY_COMMENT_APPEARANCE_60C73F44B9, 0);
+        if (pct <= 0 || pct > 100) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = panel.getLayoutParams();
+        if (lp == null) {
+            lp = new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        int screenHeight = panel.getResources().getDisplayMetrics().heightPixels;
+        lp.height = screenHeight * pct / 100;
+        panel.setLayoutParams(lp);
+    }
+
     /** 递归设置评论项内所有文字控件的颜色 */
     private static void setCommentTextColor(View view, int color) {
         if (view instanceof TextView) {
@@ -355,26 +381,107 @@ final class CommentEnhancer {
 
     /** 禁用点击评论回复：在评论列表 RecyclerView 上拦截单击，
      *  命中评论项时消费事件，阻止展开回复（抖X comment_interaction.fb9a1f8613）。 */
-    private static void guardReplyClick(Activity activity, View panel) {
+    private static final Object GUARD_TAG = new Object();
+
+    /** 评论点击守卫：禁用点击回复 + 点赞/点踩前确认（一次安装统一触摸监听）。 */
+    private static void installCommentGuards(Activity activity, View panel) {
         if (activity == null || panel == null) {
             return;
         }
+        boolean guardReply = bool(
+                CommentPrefs.KEY_COMMENT_INTERACTION_FB9A1F8613, false);
+        boolean confirmLike = bool(
+                CommentPrefs.KEY_COMMENT_INTERACTION_F89DD25379, false);
+        boolean confirmDislike = bool(
+                CommentPrefs.KEY_COMMENT_INTERACTION_9D018D123F, false);
+        if (!guardReply && !confirmLike && !confirmDislike) {
+            return;
+        }
         View rv = findRecyclerView(panel);
-        if (rv == null) {
+        if (rv == null || GUARD_TAG.equals(rv.getTag())) {
             return;
         }
-        if (Boolean.TRUE.equals(rv.getTag())) {
-            return;
-        }
-        rv.setTag(Boolean.TRUE);
+        rv.setTag(GUARD_TAG);
         GestureDetector detector = new GestureDetector(activity,
                 new GestureDetector.SimpleOnGestureListener() {
                     @Override
                     public boolean onSingleTapUp(MotionEvent e) {
-                        return findHitComment(rv, e) != null;
+                        if (confirmLike || confirmDislike) {
+                            View button = findActionButton(rv, e,
+                                    confirmLike, confirmDislike);
+                            if (button != null) {
+                                confirmCommentAction(activity, button);
+                                return true;
+                            }
+                        }
+                        return guardReply && findHitComment(rv, e) != null;
                     }
                 });
         rv.setOnTouchListener((v, event) -> detector.onTouchEvent(event));
+    }
+
+    /** 命中坐标内的点赞/点踩按钮（ImageView，contentDescription 含"赞"/"踩"）。 */
+    private static View findActionButton(View rv, MotionEvent e,
+                                         boolean wantLike, boolean wantDislike) {
+        if (!(rv instanceof ViewGroup)) {
+            return null;
+        }
+        int[] rvLoc = new int[2];
+        rv.getLocationOnScreen(rvLoc);
+        int absX = rvLoc[0] + (int) e.getX();
+        int absY = rvLoc[1] + (int) e.getY();
+        return findActionButtonIn(rv, absX, absY, wantLike, wantDislike);
+    }
+
+    private static View findActionButtonIn(View view, int absX, int absY,
+                                           boolean wantLike, boolean wantDislike) {
+        if (view instanceof android.widget.ImageView) {
+            CharSequence desc = ((android.widget.ImageView) view)
+                    .getContentDescription();
+            if (desc != null && desc.length() > 0) {
+                String d = desc.toString().toLowerCase(Locale.ROOT);
+                boolean like = d.contains("赞") || d.contains("like");
+                boolean dislike = d.contains("踩") || d.contains("dislike");
+                if ((like && wantLike) || (dislike && wantDislike)) {
+                    int[] loc = new int[2];
+                    view.getLocationOnScreen(loc);
+                    if (absX >= loc[0] && absX <= loc[0] + view.getWidth()
+                            && absY >= loc[1] && absY <= loc[1] + view.getHeight()) {
+                        return view;
+                    }
+                }
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findActionButtonIn(group.getChildAt(i),
+                        absX, absY, wantLike, wantDislike);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 弹确认框：确认后执行按钮原有点击逻辑。 */
+    private static void confirmCommentAction(Activity activity, View button) {
+        if (activity == null || button == null) {
+            return;
+        }
+        CharSequence desc = (button instanceof android.widget.ImageView)
+                ? ((android.widget.ImageView) button).getContentDescription()
+                : null;
+        String action = (desc != null
+                && desc.toString().toLowerCase(Locale.ROOT).contains("踩"))
+                ? "点踩" : "点赞";
+        new AlertDialog.Builder(activity)
+                .setTitle("评论" + action + "确认")
+                .setMessage("确定要" + action + "这条评论吗？")
+                .setPositiveButton("确定", (d, w) -> button.performClick())
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private static View findRecyclerView(View view) {
