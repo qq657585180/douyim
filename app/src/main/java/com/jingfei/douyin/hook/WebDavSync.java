@@ -27,7 +27,7 @@ import io.github.libxposed.service.XposedService;
  * 将全部模块配置（douyin_* SharedPreferences）序列化为 JSON，
  * 通过 WebDAV PUT 上传 / GET 下载，实现跨设备配置备份与恢复。
  */
-final class WebDavSync {
+public final class WebDavSync {
     private static volatile SharedPreferences prefs;
 
     /** 参与备份的全部模块配置名。 */
@@ -62,7 +62,7 @@ final class WebDavSync {
     }
 
     /** 将所有模块配置备份到 WebDAV。 */
-    static void backupAll(XposedService service) throws Exception {
+    public static void backupAll(XposedService service) throws Exception {
         String url = buildTargetUrl(service);
         JSONObject root = new JSONObject();
         root.put("app", "douyim");
@@ -89,7 +89,7 @@ final class WebDavSync {
     }
 
     /** 从 WebDAV 下载并恢复全部模块配置。 */
-    static void restoreAll(XposedService service) throws Exception {
+    public static void restoreAll(XposedService service) throws Exception {
         String url = buildTargetUrl(service);
         HttpURLConnection connection = open(url, service);
         connection.setRequestMethod("GET");

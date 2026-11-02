@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import com.jingfei.douyin.prefs.CommentPrefs;
@@ -21,13 +22,14 @@ import java.util.regex.Pattern;
 
 /**
  * 评论增强（douyin_comment）Hook 子系统。
- * 已实现：评论关键词过滤 / 屏蔽用户 / 白名单 / 广告评论过滤。
- * 通过 Activity 生命周期驱动主线程定时扫描评论区 RecyclerView，
- * 命中过滤规则的评论项直接隐藏。其余评论区高级 UI 依赖抖音内部视图结构，保持 TODO。
+ * 已实现：评论关键词过滤 / 屏蔽用户 / 白名单 / 广告评论过滤；
+ * 评论区 UI 隐藏：顶部广告卡片、相关搜索、底部输入栏、回复按钮。
+ * 通过 Activity 生命周期驱动主线程定时扫描评论区视图，命中规则直接隐藏。
  */
 final class CommentEnhancer {
     private static volatile SharedPreferences prefs;
     private static volatile WeakReference<Activity> currentActivity;
+    private static volatile WeakReference<View> cachedPanel;
 
     private static final Handler HANDLER = new Handler(Looper.getMainLooper());
     private static final Runnable SCAN = CommentEnhancer::scanComments;
@@ -89,12 +91,194 @@ final class CommentEnhancer {
         try {
             View decor = activity.getWindow().getDecorView();
             if (decor != null) {
-                scanView(decor);
+                View panel = resolveCommentPanel(decor);
+                View target = panel != null ? panel : decor;
+                applyUiVisibility(target);
+                scanView(target);
             }
         } catch (Throwable ignored) {
             // 视图结构变化或权限异常时跳过本轮
         }
         HANDLER.postDelayed(SCAN, SCAN_INTERVAL_MS);
+    }
+
+    /** 复用缓存的评论面板；失效时重新在视图树中定位 */
+    private static View resolveCommentPanel(View decor) {
+        if (cachedPanel != null) {
+            View cached = cachedPanel.get();
+            if (cached != null && cached.isShown()) {
+                return cached;
+            }
+        }
+        View found = findCommentPanel(decor);
+        if (found != null) {
+            cachedPanel = new WeakReference<>(found);
+        }
+        return found;
+    }
+
+    /** 启发式定位评论面板：同时包含输入框与列表，或含"评论"文本与列表 */
+    private static View findCommentPanel(View view) {
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            boolean hasInput = containsInstanceOf(group, EditText.class);
+            boolean hasRecycler = containsRecyclerView(group);
+            boolean hasCommentTitle = containsText(group, "评论");
+            if ((hasInput && hasRecycler) || (hasCommentTitle && hasRecycler)) {
+                return view;
+            }
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findCommentPanel(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 评论区 UI 隐藏：广告/相关搜索/底部输入栏/回复按钮 */
+    private static void applyUiVisibility(View panel) {
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_EA45E2F234, false)) {
+            hideByText(panel, "广告", 2, true);
+            hideByText(panel, "相关搜索", 1, true);
+        }
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_AE313F9A5C, false)) {
+            hideInputBar(panel);
+        }
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_51E3399312, false)) {
+            hideByText(panel, "回复", 1, false);
+        }
+    }
+
+    /** 隐藏评论底部输入栏：找到 EditText，向上定位包含发送按钮的容器隐藏 */
+    private static void hideInputBar(View panel) {
+        View edit = findInstance(panel, EditText.class);
+        if (edit == null) {
+            return;
+        }
+        View cur = edit;
+        while (cur.getParent() instanceof ViewGroup) {
+            ViewGroup parent = (ViewGroup) cur.getParent();
+            if (countClickable(parent) >= 2) {
+                if (parent.getVisibility() == View.VISIBLE) {
+                    parent.setVisibility(View.GONE);
+                }
+                return;
+            }
+            cur = parent;
+        }
+        ViewGroup direct = (ViewGroup) edit.getParent();
+        if (direct != null && direct.getVisibility() == View.VISIBLE) {
+            direct.setVisibility(View.GONE);
+        }
+    }
+
+    private static int countClickable(View view) {
+        int count = view.isClickable() ? 1 : 0;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                count += countClickable(group.getChildAt(i));
+            }
+        }
+        return count;
+    }
+
+    /** 按文本隐藏视图：找到文本命中项后向上提升 levels 层隐藏容器 */
+    private static boolean hideByText(View root, String target, int levels, boolean contains) {
+        if (root instanceof TextView) {
+            CharSequence cs = ((TextView) root).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            boolean hit = contains ? text.contains(target) : text.equals(target);
+            if (hit) {
+                View cur = root;
+                for (int i = 0; i < levels && cur.getParent() instanceof ViewGroup; i++) {
+                    ViewGroup parent = (ViewGroup) cur.getParent();
+                    if (parent == null) {
+                        return true;
+                    }
+                    cur = parent;
+                }
+                if (cur != root && cur.getVisibility() == View.VISIBLE) {
+                    cur.setVisibility(View.GONE);
+                    return true;
+                }
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (hideByText(group.getChildAt(i), target, levels, contains)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsRecyclerView(View view) {
+        if (view instanceof ViewGroup && view.getClass().getName().contains("RecyclerView")) {
+            return true;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (containsRecyclerView(group.getChildAt(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsText(View view, String target) {
+        if (view instanceof TextView) {
+            CharSequence cs = ((TextView) view).getText();
+            if (cs != null && cs.toString().contains(target)) {
+                return true;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (containsText(group.getChildAt(i), target)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsInstanceOf(View view, Class<?> cls) {
+        if (cls.isInstance(view)) {
+            return true;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (containsInstanceOf(group.getChildAt(i), cls)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static View findInstance(View view, Class<?> cls) {
+        if (cls.isInstance(view)) {
+            return view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findInstance(group.getChildAt(i), cls);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     private static void scanView(View view) {
