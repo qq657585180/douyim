@@ -271,6 +271,25 @@ final class FeedContentTracker {
         maxAgeDays = Math.max(0, days);
     }
 
+    /** 文案正则过滤（抖X feed_filter.regex）；空/非法正则表示不启用。 */
+    static void setTextRegex(String regex) {
+        if (regex == null || regex.trim().isEmpty()) {
+            textFilterPattern = null;
+        } else {
+            try {
+                textFilterPattern = java.util.regex.Pattern.compile(regex);
+            } catch (RuntimeException ignored) {
+                textFilterPattern = null;
+            }
+        }
+    }
+
+    /** 屏蔽作者/作者白名单（抖X feed_filter.2cb429cc12 / feed_filter.55dec76d5c）。 */
+    static void setAuthorFilters(String blocked, String whitelist) {
+        blockedAuthors = splitAuthors(blocked);
+        whitelistAuthors = splitAuthors(whitelist);
+    }
+
     private static long minDiggCount;
     private static long minDurationMs;
     private static long maxDurationMs;
@@ -278,6 +297,9 @@ final class FeedContentTracker {
     private static long minCollectCount;
     private static long minShareCount;
     private static int maxAgeDays;
+    private static volatile java.util.regex.Pattern textFilterPattern;
+    private static volatile String[] blockedAuthors;
+    private static volatile String[] whitelistAuthors;
 
     private static FilterPreferences.Values activeFilterSettings() {
         FilterPreferences.Values override = purifyOverride;
@@ -364,6 +386,14 @@ final class FeedContentTracker {
             shareCount = longValue(
                     readField(statisticsType, statistics, "shareCount"), 0L);
         }
+        // 作者信息（抖X 屏蔽作者/作者白名单过滤依据）。读不到时保持 null。
+        String authorName = null;
+        Object author = readField(type, aweme, "author");
+        if (author != null) {
+            authorName = firstNonBlank(
+                    textValue(readField(author.getClass(), author, "nickname")),
+                    textValue(readField(author.getClass(), author, "uniqueId")));
+        }
         boolean photo =
                 hostImage
                         || hostMultiImage
@@ -440,6 +470,21 @@ final class FeedContentTracker {
                     reason = "older than " + maxAgeDays + " days";
                 }
             }
+            // 文案正则过滤（抖X feed_filter.regex）：正则命中文案则过滤。
+            if (textFilterPattern != null && description != null
+                    && textFilterPattern.matcher(description).find()) {
+                reason = "text matches filter regex";
+            }
+            // 作者白名单优先：非空白名单时仅保留名单内作者。
+            if (whitelistAuthors != null && whitelistAuthors.length > 0) {
+                if (authorName == null || !containsAuthor(whitelistAuthors, authorName)) {
+                    reason = "author not in whitelist: "
+                            + (authorName == null ? "unknown" : authorName);
+                }
+            } else if (blockedAuthors != null && blockedAuthors.length > 0
+                    && authorName != null && containsAuthor(blockedAuthors, authorName)) {
+                reason = "author blocked: " + authorName;
+            }
         }
         return new Snapshot(
                 aid,
@@ -486,6 +531,33 @@ final class FeedContentTracker {
         if (asyncAdInfo != null) markers.append("async,");
         if (linkAdData != null) markers.append("link,");
         return markers.length() == 0 ? "none" : markers.toString();
+    }
+
+    private static String[] splitAuthors(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+        java.util.Set<String> unique = new java.util.LinkedHashSet<>();
+        for (String part : raw.split("[\r\n,，;；]+")) {
+            String value = part.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!value.isEmpty()) {
+                unique.add(value);
+            }
+        }
+        return unique.isEmpty() ? null : unique.toArray(new String[0]);
+    }
+
+    private static boolean containsAuthor(String[] authors, String name) {
+        if (authors == null || name == null) {
+            return false;
+        }
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        for (String author : authors) {
+            if (author.equals(lower)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Object readField(Class<?> type, Object instance, String name) {

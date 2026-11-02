@@ -46,6 +46,8 @@ final class PurifyEnhancer {
             FeedContentTracker.setDurationBounds(0, 0);
             FeedContentTracker.setStatThresholds(0, 0, 0);
             FeedContentTracker.setMaxAgeDays(0);
+            FeedContentTracker.setTextRegex(null);
+            FeedContentTracker.setAuthorFilters(null, null);
             FeedContentTracker.applyPurifyOverride(null);
             return;
         }
@@ -68,10 +70,18 @@ final class PurifyEnhancer {
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_E885E7E1B6, 0);
         int maxAgeDays = PurifyPrefs.getInt(
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_61B4880C99, 0);
+        String textRegex = PurifyPrefs.getString(
+                prefs, PurifyPrefs.KEY_FEED_FILTER_REGEX, "");
+        String blockedAuthors = PurifyPrefs.getString(
+                prefs, PurifyPrefs.KEY_FEED_FILTER_2CB429CC12, "");
+        String whitelistAuthors = PurifyPrefs.getString(
+                prefs, PurifyPrefs.KEY_FEED_FILTER_55DEC76D5C, "");
         FeedContentTracker.setMinDiggCount(minDigg);
         FeedContentTracker.setDurationBounds(minDuration, maxDuration);
         FeedContentTracker.setStatThresholds(minComment, minCollect, minShare);
         FeedContentTracker.setMaxAgeDays(maxAgeDays);
+        FeedContentTracker.setTextRegex(textRegex);
+        FeedContentTracker.setAuthorFilters(blockedAuthors, whitelistAuthors);
         FeedContentTracker.applyPurifyOverride(
                 new FilterPreferences.Values(skipAds, false, false, false, keywords));
     }
