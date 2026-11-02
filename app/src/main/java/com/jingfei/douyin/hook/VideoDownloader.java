@@ -287,7 +287,7 @@ final class VideoDownloader {
 
     /** 清理文件名中的非法字符。 */
     private static String sanitizeFileName(String name) {
-        String cleaned = name.replaceAll("[\\/:*?"<>|\p{Cntrl}]", "").trim();
+        String cleaned = name.replaceAll("[\\/:*?\"<>|\\p{Cntrl}]", "").trim();
         return cleaned.isEmpty() ? "douyin_download" : cleaned;
     }
 

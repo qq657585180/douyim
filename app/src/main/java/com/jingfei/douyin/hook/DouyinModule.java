@@ -131,6 +131,7 @@ public final class DouyinModule extends XposedModule {
                 .intercept(chain -> {
                     Object result = chain.proceed();
                     ImmersiveUi.onActivityResumed((Activity) chain.getThisObject());
+                    CommentEnhancer.onActivityResumed((Activity) chain.getThisObject());
                     return result;
                 });
 
@@ -140,6 +141,7 @@ public final class DouyinModule extends XposedModule {
                 .setExceptionMode(ExceptionMode.PROTECTIVE)
                 .intercept(chain -> {
                     ImmersiveUi.onActivityPaused((Activity) chain.getThisObject());
+                    CommentEnhancer.onActivityPaused((Activity) chain.getThisObject());
                     return chain.proceed();
                 });
     }
