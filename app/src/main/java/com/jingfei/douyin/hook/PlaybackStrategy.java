@@ -69,6 +69,18 @@ final class PlaybackStrategy {
             ImmersiveUi.applyAppearanceOverrides(
                     null, null, null, danmakuEnabled && keepDanmaku, null);
         }
+        // 抖X"双击"手势 → ImmersiveUi 拦截双击点赞（仅显式配置过才覆盖）。
+        if (prefs.contains(PlaybackPrefs.KEY_GESTURES_26D7C24F77)) {
+            boolean blockDoubleTap = PlaybackPrefs.getBoolean(
+                    prefs, PlaybackPrefs.KEY_GESTURES_26D7C24F77, false);
+            ImmersiveUi.applyAppearanceOverrides(null, blockDoubleTap, null, null, null);
+        }
+        // 抖X"清爽模式设置"（播放页手势）→ 清爽模式（隐藏多余控件）。
+        if (prefs.contains(PlaybackPrefs.KEY_GESTURES_37B88FC1FB)) {
+            boolean clean = PlaybackPrefs.getBoolean(
+                    prefs, PlaybackPrefs.KEY_GESTURES_37B88FC1FB, false);
+            ImmersiveUi.applyUiVisibilityOverrides(null, null, null, clean, null, null);
+        }
     }
 
     static boolean bool(String key, boolean def) {
