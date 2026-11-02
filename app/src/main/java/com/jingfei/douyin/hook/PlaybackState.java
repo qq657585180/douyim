@@ -313,6 +313,40 @@ final class PlaybackState {
         return true;
     }
 
+    private static volatile boolean pauseOnCompletion;
+
+    /** 由 PlaybackStrategy 注入抖X"播放完成暂停"（关闭自动连播时启用）。 */
+    static void setPauseOnCompletion(boolean enabled) {
+        pauseOnCompletion = enabled;
+    }
+
+    static synchronized boolean shouldPauseOnCompletion() {
+        return pauseOnCompletion;
+    }
+
+    /** 反射调用播放器 pause()，失败则忽略（播放器接口差异由保护模式兜底）。 */
+    private static void pausePlayer(Object player) {
+        if (player == null) {
+            return;
+        }
+        try {
+            java.lang.reflect.Method pause = player.getClass().getMethod("pause");
+            pause.invoke(player);
+            return;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // fall through to interface scan
+        }
+        for (Class<?> type : player.getClass().getInterfaces()) {
+            try {
+                java.lang.reflect.Method pause = type.getMethod("pause");
+                pause.invoke(player);
+                return;
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // try next interface
+            }
+        }
+    }
+
     static synchronized boolean consumeLoopBoundary() {
         if (userPaused || photoContent) {
             return false;
@@ -354,10 +388,26 @@ final class PlaybackState {
                     && loopBoundary) {
                 completionArmed = false;
                 lastAutoAdvanceAt = now;
-                autoSwitchUntil = now + AUTO_SWITCH_GRACE_MS;
-                Log.i(DouyinModule.TAG,
-                        "completed loop boundary detected: "
-                                + position + "/" + duration);
+                if (pauseOnCompletion) {
+                    // 抖X"播放完成暂停"：不自动切换，主动暂停播放器并恢复 UI。
+                    pausePlayer(player);
+                    playing = false;
+                    pausedAt = now;
+                    generation++;
+                    // 标记为暂停态，让 ImmersiveUi 恢复系统栏/控件（同用户暂停语义）。
+                    userPaused = true;
+                    userPausedAt = now;
+                    userPausedEngine = new WeakReference<>(player);
+                    userPausedAid = null;
+                    Log.i(DouyinModule.TAG,
+                            "pause on completion: " + position + "/" + duration);
+                    ImmersiveUi.onPlaybackChanged(false);
+                } else {
+                    autoSwitchUntil = now + AUTO_SWITCH_GRACE_MS;
+                    Log.i(DouyinModule.TAG,
+                            "completed loop boundary detected: "
+                                    + position + "/" + duration);
+                }
                 lastPosition = position;
                 return true;
             }

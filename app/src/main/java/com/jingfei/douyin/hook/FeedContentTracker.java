@@ -254,7 +254,14 @@ final class FeedContentTracker {
         minDiggCount = Math.max(0L, min);
     }
 
+    static void setDurationBounds(long minMs, long maxMs) {
+        minDurationMs = Math.max(0L, minMs);
+        maxDurationMs = Math.max(0L, maxMs);
+    }
+
     private static long minDiggCount;
+    private static long minDurationMs;
+    private static long maxDurationMs;
 
     private static FilterPreferences.Values activeFilterSettings() {
         FilterPreferences.Values override = purifyOverride;
@@ -318,6 +325,12 @@ final class FeedContentTracker {
         );
         long diggCount = longValue(
                 readField(type, aweme, "diggCount"), 0L);
+        // 视频时长（毫秒）：抖X feed 阈值过滤（时长下限/上限）。读不到时保持 0，不参与过滤。
+        long durationMs = 0L;
+        if (video != null) {
+            durationMs = longValue(
+                    readField(video.getClass(), video, "duration"), 0L);
+        }
         boolean photo =
                 hostImage
                         || hostMultiImage
@@ -369,6 +382,15 @@ final class FeedContentTracker {
             if (minDiggCount > 0 && diggCount < minDiggCount) {
                 reason = "likes below threshold: " + diggCount + " < " + minDiggCount;
             }
+            if (minDurationMs > 0 && durationMs > 0
+                    && durationMs < minDurationMs) {
+                reason = "duration below threshold: "
+                        + durationMs + " < " + minDurationMs;
+            } else if (maxDurationMs > 0 && durationMs > 0
+                    && durationMs > maxDurationMs) {
+                reason = "duration above threshold: "
+                        + durationMs + " > " + maxDurationMs;
+            }
         }
         return new Snapshot(
                 aid,
@@ -389,6 +411,7 @@ final class FeedContentTracker {
                 title,
                 description,
                 diggCount,
+                durationMs,
                 reason,
                 playUrls,
                 adMarkers
@@ -779,6 +802,7 @@ final class FeedContentTracker {
         final String title;
         final String description;
         final long diggCount;
+        final long durationMs;
         final String filterReason;
         final List<PlayUrl> playUrls;
         final String adMarkers;
@@ -805,6 +829,7 @@ final class FeedContentTracker {
                 String title,
                 String description,
                 long diggCount,
+                long durationMs,
                 String filterReason,
                 List<PlayUrl> playUrls,
                 String adMarkers
@@ -827,6 +852,7 @@ final class FeedContentTracker {
             this.title = title;
             this.description = description;
             this.diggCount = diggCount;
+            this.durationMs = durationMs;
             this.filterReason = filterReason;
             this.playUrls = playUrls;
             this.adMarkers = adMarkers;

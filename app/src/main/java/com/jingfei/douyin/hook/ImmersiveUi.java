@@ -62,6 +62,25 @@ final class ImmersiveUi {
     private static volatile Boolean appearanceImmersiveEnabled;
     private static volatile Boolean appearanceShowDanmaku;
     private static volatile Boolean appearanceDoubleTapComments;
+    // === 抖X外观桥接（douyin_appearance）===
+    // 播放时隐藏系统状态栏（home.2e0ddfde95）
+    private static volatile boolean hideStatusBar;
+    // 隐藏系统导航栏（home.7616bc18d9）
+    private static volatile boolean hideNavBar;
+    // 隐藏整个首页底栏（home.bottom_hidden）
+    private static volatile boolean hideHomeBottomBar;
+    // 清爽模式：隐藏非视频悬浮控件（controls.d4f77759dc）
+    private static volatile boolean cleanMode;
+    // 隐藏广告卡片（controls.ad_card）
+    private static volatile boolean hideAdCard;
+    // 隐藏作者声明/风险提示（controls.report_warn）
+    private static volatile boolean hideAuthorNotice;
+    private static volatile Boolean appearanceHideStatusBar;
+    private static volatile Boolean appearanceHideNavBar;
+    private static volatile Boolean appearanceHideHomeBottomBar;
+    private static volatile Boolean appearanceCleanMode;
+    private static volatile Boolean appearanceHideAdCard;
+    private static volatile Boolean appearanceHideAuthorNotice;
     private static SharedPreferences immersivePreferences;
     private static final SharedPreferences.OnSharedPreferenceChangeListener
             PREFERENCE_LISTENER = (preferences, key) -> {
@@ -328,6 +347,32 @@ final class ImmersiveUi {
         applyAppearanceOverridesToFields();
     }
 
+    /** 由 ThemeManager 注入抖X外观可见性覆盖（douyin_appearance）。null 表示不覆盖该字段。 */
+    static void applyUiVisibilityOverrides(
+            Boolean hideStatusBar,
+            Boolean hideNavBar,
+            Boolean hideHomeBottomBar,
+            Boolean cleanMode,
+            Boolean hideAdCard,
+            Boolean hideAuthorNotice) {
+        appearanceHideStatusBar = hideStatusBar;
+        appearanceHideNavBar = hideNavBar;
+        appearanceHideHomeBottomBar = hideHomeBottomBar;
+        appearanceCleanMode = cleanMode;
+        appearanceHideAdCard = hideAdCard;
+        appearanceHideAuthorNotice = hideAuthorNotice;
+        applyAppearanceOverridesToFields();
+    }
+
+    /** 沉浸模式是否应激活：原生沉浸开关或任一抖X外观隐藏项开启。 */
+    private static boolean isImmersiveActive() {
+        return immersiveEnabled
+                || hideHomeBottomBar
+                || cleanMode
+                || hideAdCard
+                || hideAuthorNotice;
+    }
+
     private static void applyAppearanceOverridesToFields() {
         if (appearanceModuleEnabled != null) {
             moduleEnabled = appearanceModuleEnabled;
@@ -343,6 +388,24 @@ final class ImmersiveUi {
         }
         if (appearanceDoubleTapComments != null) {
             openCommentsOnDoubleTap = appearanceDoubleTapComments;
+        }
+        if (appearanceHideStatusBar != null) {
+            hideStatusBar = appearanceHideStatusBar;
+        }
+        if (appearanceHideNavBar != null) {
+            hideNavBar = appearanceHideNavBar;
+        }
+        if (appearanceHideHomeBottomBar != null) {
+            hideHomeBottomBar = appearanceHideHomeBottomBar;
+        }
+        if (appearanceCleanMode != null) {
+            cleanMode = appearanceCleanMode;
+        }
+        if (appearanceHideAdCard != null) {
+            hideAdCard = appearanceHideAdCard;
+        }
+        if (appearanceHideAuthorNotice != null) {
+            hideAuthorNotice = appearanceHideAuthorNotice;
         }
     }
 
@@ -701,8 +764,13 @@ final class ImmersiveUi {
             return;
         }
 
-        if (autoPlayEnabled && PlaybackState.consumeLoopBoundary()) {
-            onPlaybackCompleted("completed loop boundary");
+        if ((autoPlayEnabled || PlaybackState.shouldPauseOnCompletion())
+                && PlaybackState.consumeLoopBoundary()) {
+            // pauseOnCompletion 场景已在 consumeLoopBoundary 内暂停播放器并恢复 UI；
+            // 只有自动连播开启时才模拟滑动到下一集。
+            if (autoPlayEnabled) {
+                onPlaybackCompleted("completed loop boundary");
+            }
             scheduleNextScan();
             return;
         }
@@ -712,7 +780,7 @@ final class ImmersiveUi {
             return;
         }
 
-        boolean keepUiHidden = immersiveEnabled && PlaybackState.shouldKeepUiHidden();
+        boolean keepUiHidden = isImmersiveActive() && PlaybackState.shouldKeepUiHidden();
         RenderViews realVideos =
                 keepUiHidden
                         ? findVisibleRealVideoViews(decor)
@@ -1704,14 +1772,21 @@ final class ImmersiveUi {
         if (!ROOT_SYSTEM_UI.containsKey(decor)) {
             ROOT_SYSTEM_UI.put(decor, decor.getSystemUiVisibility());
         }
+        // 原生沉浸模式：全隐藏。抖X桥接开关：按开关只隐藏对应系统栏。
+        boolean hideStatus = immersiveEnabled || hideStatusBar;
+        boolean hideNav = immersiveEnabled || hideNavBar;
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+        if (hideStatus) {
+            flags |= View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+        }
+        if (hideNav) {
+            flags |= View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+        }
         decor.setSystemUiVisibility(
-                decor.getSystemUiVisibility()
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                decor.getSystemUiVisibility() | flags
         );
     }
 

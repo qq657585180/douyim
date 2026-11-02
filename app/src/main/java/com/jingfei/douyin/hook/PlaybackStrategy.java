@@ -24,7 +24,7 @@ final class PlaybackStrategy {
             p.registerOnSharedPreferenceChangeListener(LISTENER);
         }
         try {
-            applyAutoplayBridge();
+            applyPlaybackBridge();
             module.log(Log.INFO, DouyinModule.TAG,
                     "PlaybackStrategy installed (douyin_playback)");
         } catch (Throwable error) {
@@ -33,8 +33,8 @@ final class PlaybackStrategy {
         }
     }
 
-    /** 桥接抖X自动连播到 ImmersiveUi；任一开关开启即启用。 */
-    private static void applyAutoplayBridge() {
+    /** 播放策略总桥接：自动连播 + 完成暂停 + 倍速。 */
+    private static void applyPlaybackBridge() {
         if (prefs == null) {
             return;
         }
@@ -43,6 +43,21 @@ final class PlaybackStrategy {
                         || PlaybackPrefs.getBoolean(
                         prefs, PlaybackPrefs.KEY_PAGE_AUTOPLAY, true);
         ImmersiveUi.setAutoPlayEnabled(autoplay);
+        // 抖X"播放完成暂停"：关闭自动连播时，视频播完主动暂停而不是自动切下一条。
+        PlaybackState.setPauseOnCompletion(!autoplay);
+        // 抖X"默认倍速"：KEY_SPEED 以 String（"1.0"/"1.5"/"2.0"）或 float 存储。
+        float speed = 1f;
+        String speedText = prefs.getString(PlaybackPrefs.KEY_SPEED, null);
+        if (speedText != null) {
+            try {
+                speed = Float.parseFloat(speedText);
+            } catch (NumberFormatException ignored) {
+                speed = 1f;
+            }
+        } else {
+            speed = prefs.getFloat(PlaybackPrefs.KEY_SPEED, 1f);
+        }
+        PlayerHooks.setPlaybackSpeed(speed);
     }
 
     static boolean bool(String key, boolean def) {
@@ -61,7 +76,7 @@ final class PlaybackStrategy {
             (preferences, key) -> {
                 prefs = preferences;
                 try {
-                    applyAutoplayBridge();
+                    applyPlaybackBridge();
                 } catch (RuntimeException ignored) {
                     // 桥接失败不影响主流程
                 }

@@ -43,6 +43,23 @@ final class ThemeManager {
                     prefs, AppearancePrefs.KEY_HOME_6C47740864, true);
             ImmersiveUi.applyAppearanceOverrides(null, null, immersive, null, null);
         }
+        // 抖X外观可见性组 → ImmersiveUi（仅显式配置过才覆盖）
+        ImmersiveUi.applyUiVisibilityOverrides(
+                boolIfPresent(AppearancePrefs.KEY_HOME_2E0DDFDE95),   // 播放时隐藏系统状态栏
+                boolIfPresent(AppearancePrefs.KEY_HOME_7616BC18D9),   // 隐藏系统导航栏
+                boolIfPresent(AppearancePrefs.KEY_HOME_BOTTOM_HIDDEN),// 隐藏整个首页底栏
+                boolIfPresent(AppearancePrefs.KEY_CONTROLS_D4F77759DC),// 清爽模式
+                boolIfPresent(AppearancePrefs.KEY_CONTROLS_AD_CARD),  // 隐藏广告卡片
+                boolIfPresent(AppearancePrefs.KEY_CONTROLS_REPORT_WARN) // 隐藏作者声明
+        );
+    }
+
+    /** prefs 中存在该 key 才返回布尔值，否则返回 null（不覆盖）。 */
+    private static Boolean boolIfPresent(String key) {
+        if (prefs != null && prefs.contains(key)) {
+            return AppearancePrefs.getBoolean(prefs, key, false);
+        }
+        return null;
     }
 
     static boolean bool(String key, boolean def) {

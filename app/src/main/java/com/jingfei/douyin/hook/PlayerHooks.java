@@ -24,6 +24,18 @@ final class PlayerHooks {
     private static final Map<Object, WeakReference<Object>> LISTENER_OWNERS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
+    private static volatile float playbackSpeed = 1f;
+
+    /** 抖X"倍速"设置注入（0.25x–3.0x，默认 1x）。 */
+    static void setPlaybackSpeed(float speed) {
+        if (speed < 0.25f) {
+            speed = 0.25f;
+        } else if (speed > 3f) {
+            speed = 3f;
+        }
+        playbackSpeed = speed;
+    }
+
     private PlayerHooks() {
     }
 
@@ -86,7 +98,9 @@ final class PlayerHooks {
                 .intercept(chain -> {
                     Object result = chain.proceed();
                     if (playing) {
-                        PlaybackState.playing(chain.getThisObject());
+                        Object player = chain.getThisObject();
+                        PlaybackState.playing(player);
+                        applySpeed(player);
                     } else {
                         PlaybackState.paused(chain.getThisObject());
                     }
@@ -205,4 +219,53 @@ final class PlayerHooks {
         }
         return null;
     }
+    /**
+     * 播放开始时应用抖X倍速。反射常见速率方法：
+     * setRate(float) / setPlaybackRate(float) / setSpeed(float)。
+     * 失败静默（不同版本方法名不同，找不到不影响播放）。
+     */
+    private static void applySpeed(Object player) {
+        if (player == null || playbackSpeed <= 0f || Float.compare(playbackSpeed, 1f) == 0) {
+            return;
+        }
+        Method method = findRateMethod(player.getClass());
+        if (method == null) {
+            return;
+        }
+        try {
+            method.invoke(player, playbackSpeed);
+        } catch (Throwable ignored) {
+            // 播放器可能不支持该速率，忽略
+        }
+    }
+
+    private static Method RATE_METHOD;
+
+    private static Method findRateMethod(Class<?> type) {
+        Method cached = RATE_METHOD;
+        if (cached != null && cached.getDeclaringClass().isAssignableFrom(type)) {
+            return cached;
+        }
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == float.class) {
+                    String lower = method.getName().toLowerCase();
+                    if (lower.equals("setrate")
+                            || lower.equals("setplaybackrate")
+                            || lower.equals("setspeed")) {
+                        try {
+                            method.setAccessible(true);
+                        } catch (Throwable ignored) {
+                            // 非公开方法不可访问时继续尝试公开方法
+                        }
+                        RATE_METHOD = method;
+                        return method;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+}
 }

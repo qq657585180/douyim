@@ -43,6 +43,7 @@ final class PurifyEnhancer {
                         prefs, PurifyPrefs.KEY_FEED_FILTER_F42350811B, true);
         if (!feedFilterEnabled) {
             FeedContentTracker.setMinDiggCount(0);
+            FeedContentTracker.setDurationBounds(0, 0);
             FeedContentTracker.applyPurifyOverride(null);
             return;
         }
@@ -53,7 +54,12 @@ final class PurifyEnhancer {
                 prefs, PurifyPrefs.KEY_FEED_FILTER_DF653A2BF7, "");
         long minDigg = PurifyPrefs.getInt(
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_A2065CAC44, 0);
+        long minDuration = PurifyPrefs.getInt(
+                prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_MIN_DURATION, 0);
+        long maxDuration = PurifyPrefs.getInt(
+                prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_MAX_DURATION, 0);
         FeedContentTracker.setMinDiggCount(minDigg);
+        FeedContentTracker.setDurationBounds(minDuration, maxDuration);
         FeedContentTracker.applyPurifyOverride(
                 new FilterPreferences.Values(skipAds, false, false, false, keywords));
     }
