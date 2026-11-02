@@ -45,6 +45,11 @@ final class DownloadExt {
                     prefs, DownloadPrefs.KEY_PATHS_0B7E287692, "");
         }
         VideoDownloader.setDownloadSubdirectory(subdirectory);
+        // 抖X“路径模板（不含扩展名）”（paths.d094b9e3ec）与“日期格式”（paths.7530fa1a19）。
+        VideoDownloader.setPathTemplate(DownloadPrefs.getString(
+                prefs, DownloadPrefs.KEY_PATHS_D094B9E3EC, null));
+        VideoDownloader.setPathDateFormat(DownloadPrefs.getString(
+                prefs, DownloadPrefs.KEY_PATHS_7530FA1A19, null));
         boolean systemAlbum = DownloadPrefs.getBoolean(
                 prefs, DownloadPrefs.KEY_PATHS_1B6CFE60D5, false);
         VideoDownloader.setSaveToSystemAlbum(systemAlbum);

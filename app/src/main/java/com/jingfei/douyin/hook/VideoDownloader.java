@@ -26,7 +26,10 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Locale;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -79,6 +82,20 @@ final class VideoDownloader {
 
     private static boolean showDownloadNotification = true;
 
+    /** 由 DownloadExt 注入抖X“路径模板（不含扩展名）”（paths.d094b9e3ec）设置。 */
+    static void setPathTemplate(String template) {
+        customPathTemplate = template;
+    }
+
+    private static String customPathTemplate;
+
+    /** 由 DownloadExt 注入抖X“日期格式”（paths.7530fa1a19）设置。 */
+    static void setPathDateFormat(String format) {
+        pathDateFormat = format;
+    }
+
+    private static String pathDateFormat;
+
     /** 拼出 MediaStore RELATIVE_PATH；开启“系统相册”时按 MIME 落到相册/音乐目录。 */
     private static String downloadRelativePath(String mimeType) {
         if (saveToSystemAlbum) {
@@ -90,6 +107,11 @@ final class VideoDownloader {
             }
             return Environment.DIRECTORY_MOVIES;
         }
+        // 路径模板优先（不含扩展名，支持 {date}/%Y%m%d 等日期占位符）。
+        String template = resolveTemplate(customPathTemplate);
+        if (template != null && !template.isEmpty()) {
+            return Environment.DIRECTORY_DOWNLOADS + "/" + template;
+        }
         String sub = downloadSubdirectory;
         if (sub == null || sub.isEmpty()) {
             return Environment.DIRECTORY_DOWNLOADS;
@@ -99,6 +121,39 @@ final class VideoDownloader {
             return Environment.DIRECTORY_DOWNLOADS;
         }
         return Environment.DIRECTORY_DOWNLOADS + "/" + clean;
+    }
+
+    /**
+     * 解析用户路径模板中的日期占位符。
+     * 支持 {date}（按“日期格式”设置，默认 yyyy/MM）以及 %Y/%m/%d/%H/%M/%S（C 风格）。
+     * 模板不含日期占位符时原样使用（仅清理路径）。
+     */
+    private static String resolveTemplate(String template) {
+        if (template == null) {
+            return null;
+        }
+        String t = template.trim();
+        if (t.isEmpty()) {
+            return null;
+        }
+        String datePattern = pathDateFormat;
+        if (datePattern == null || datePattern.trim().isEmpty()) {
+            datePattern = "yyyy/MM";
+        }
+        if (t.contains("{date}")) {
+            t = t.replace("{date}",
+                    new SimpleDateFormat(datePattern, Locale.getDefault()).format(new Date()));
+        }
+        if (t.contains("%Y") || t.contains("%m") || t.contains("%d")
+                || t.contains("%H") || t.contains("%M") || t.contains("%S")) {
+            String pattern = t.replace("%Y", "yyyy").replace("%m", "MM")
+                    .replace("%d", "dd").replace("%H", "HH")
+                    .replace("%M", "mm").replace("%S", "ss");
+            t = new SimpleDateFormat(pattern, Locale.getDefault()).format(new Date());
+        }
+        t = t.replace('\\', '/').replaceAll("/{2,}", "/")
+                .replaceAll("^/+", "").replaceAll("/+$", "");
+        return t;
     }
 
     /** 开启“系统相册”时用相册/音乐 ContentUri，否则用 Downloads 集合。 */
