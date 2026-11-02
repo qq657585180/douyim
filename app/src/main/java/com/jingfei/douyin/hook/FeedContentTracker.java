@@ -259,9 +259,19 @@ final class FeedContentTracker {
         maxDurationMs = Math.max(0L, maxMs);
     }
 
+    /** 最低评论/收藏/分享数阈值（抖X feed_thresholds.*）；0 表示不启用对应过滤。 */
+    static void setStatThresholds(long minComment, long minCollect, long minShare) {
+        minCommentCount = Math.max(0L, minComment);
+        minCollectCount = Math.max(0L, minCollect);
+        minShareCount = Math.max(0L, minShare);
+    }
+
     private static long minDiggCount;
     private static long minDurationMs;
     private static long maxDurationMs;
+    private static long minCommentCount;
+    private static long minCollectCount;
+    private static long minShareCount;
 
     private static FilterPreferences.Values activeFilterSettings() {
         FilterPreferences.Values override = purifyOverride;
@@ -331,6 +341,20 @@ final class FeedContentTracker {
             durationMs = longValue(
                     readField(video.getClass(), video, "duration"), 0L);
         }
+        // 互动数（抖X feed_thresholds 评论/收藏/分享）：从 statistics 对象读取。
+        long commentCount = 0L;
+        long collectCount = 0L;
+        long shareCount = 0L;
+        Object statistics = readField(type, aweme, "statistics");
+        if (statistics != null) {
+            Class<?> statisticsType = statistics.getClass();
+            commentCount = longValue(
+                    readField(statisticsType, statistics, "commentCount"), 0L);
+            collectCount = longValue(
+                    readField(statisticsType, statistics, "collectCount"), 0L);
+            shareCount = longValue(
+                    readField(statisticsType, statistics, "shareCount"), 0L);
+        }
         boolean photo =
                 hostImage
                         || hostMultiImage
@@ -391,6 +415,16 @@ final class FeedContentTracker {
                 reason = "duration above threshold: "
                         + durationMs + " > " + maxDurationMs;
             }
+            if (minCommentCount > 0 && commentCount < minCommentCount) {
+                reason = "comments below threshold: "
+                        + commentCount + " < " + minCommentCount;
+            } else if (minCollectCount > 0 && collectCount < minCollectCount) {
+                reason = "collects below threshold: "
+                        + collectCount + " < " + minCollectCount;
+            } else if (minShareCount > 0 && shareCount < minShareCount) {
+                reason = "shares below threshold: "
+                        + shareCount + " < " + minShareCount;
+            }
         }
         return new Snapshot(
                 aid,
@@ -412,6 +446,9 @@ final class FeedContentTracker {
                 description,
                 diggCount,
                 durationMs,
+                commentCount,
+                collectCount,
+                shareCount,
                 reason,
                 playUrls,
                 adMarkers
@@ -803,6 +840,9 @@ final class FeedContentTracker {
         final String description;
         final long diggCount;
         final long durationMs;
+        final long commentCount;
+        final long collectCount;
+        final long shareCount;
         final String filterReason;
         final List<PlayUrl> playUrls;
         final String adMarkers;
@@ -830,6 +870,9 @@ final class FeedContentTracker {
                 String description,
                 long diggCount,
                 long durationMs,
+                long commentCount,
+                long collectCount,
+                long shareCount,
                 String filterReason,
                 List<PlayUrl> playUrls,
                 String adMarkers
@@ -853,6 +896,9 @@ final class FeedContentTracker {
             this.description = description;
             this.diggCount = diggCount;
             this.durationMs = durationMs;
+            this.commentCount = commentCount;
+            this.collectCount = collectCount;
+            this.shareCount = shareCount;
             this.filterReason = filterReason;
             this.playUrls = playUrls;
             this.adMarkers = adMarkers;

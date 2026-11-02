@@ -44,6 +44,7 @@ final class PurifyEnhancer {
         if (!feedFilterEnabled) {
             FeedContentTracker.setMinDiggCount(0);
             FeedContentTracker.setDurationBounds(0, 0);
+            FeedContentTracker.setStatThresholds(0, 0, 0);
             FeedContentTracker.applyPurifyOverride(null);
             return;
         }
@@ -58,8 +59,15 @@ final class PurifyEnhancer {
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_MIN_DURATION, 0);
         long maxDuration = PurifyPrefs.getInt(
                 prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_MAX_DURATION, 0);
+        long minComment = PurifyPrefs.getInt(
+                prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_D2FC778560, 0);
+        long minCollect = PurifyPrefs.getInt(
+                prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_6AE0300933, 0);
+        long minShare = PurifyPrefs.getInt(
+                prefs, PurifyPrefs.KEY_FEED_THRESHOLDS_E885E7E1B6, 0);
         FeedContentTracker.setMinDiggCount(minDigg);
         FeedContentTracker.setDurationBounds(minDuration, maxDuration);
+        FeedContentTracker.setStatThresholds(minComment, minCollect, minShare);
         FeedContentTracker.applyPurifyOverride(
                 new FilterPreferences.Values(skipAds, false, false, false, keywords));
     }

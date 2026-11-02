@@ -58,6 +58,17 @@ final class PlaybackStrategy {
             speed = prefs.getFloat(PlaybackPrefs.KEY_SPEED, 1f);
         }
         PlayerHooks.setPlaybackSpeed(speed);
+        // 抖X"弹幕增强-打开评论区时保留弹幕" → ImmersiveUi.showDanmaku。
+        // 仅当用户在抖X里显式配置过弹幕增强或保留弹幕时才覆盖。
+        if (prefs.contains(PlaybackPrefs.KEY_DANMAKU_83D6B31D9A)
+                || prefs.contains(PlaybackPrefs.KEY_DANMAKU_EA1DC8805E)) {
+            boolean danmakuEnabled = prefs.getBoolean(
+                    PlaybackPrefs.KEY_DANMAKU_83D6B31D9A, true);
+            boolean keepDanmaku = prefs.getBoolean(
+                    PlaybackPrefs.KEY_DANMAKU_EA1DC8805E, true);
+            ImmersiveUi.applyAppearanceOverrides(
+                    null, null, null, danmakuEnabled && keepDanmaku, null);
+        }
     }
 
     static boolean bool(String key, boolean def) {
