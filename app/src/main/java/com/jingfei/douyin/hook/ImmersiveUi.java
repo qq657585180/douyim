@@ -747,6 +747,7 @@ final class ImmersiveUi {
         if (!moduleEnabled) {
             removeDownloadButton();
             restoreAll(activity, decor);
+            PlaybackTimeOverlay.remove();
             scheduleScan(500L);
             return;
         }
@@ -756,6 +757,10 @@ final class ImmersiveUi {
         }
         if (activity != null && (activity.isFinishing() || activity.isDestroyed())) {
             return;
+        }
+        // 播放进度时间叠加（抖X playback.progress_time）
+        if (activity != null) {
+            PlaybackTimeOverlay.update(activity);
         }
 
         if (PlaybackState.consumePlaybackError()) {

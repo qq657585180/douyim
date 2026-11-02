@@ -5,6 +5,8 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -107,6 +109,18 @@ final class CommentEnhancer {
                     if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_C0CE370B93, false)
                             && !hasCommentItems(panel)) {
                         suppressEmptyInput(activity, panel);
+                    }
+                    // 打开评论不缩放视频（抖X comment_interaction.6346a6d3d4）
+                    if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_6346A6D3D4, false)) {
+                        resetVideoScale(decor);
+                    }
+                    // 打开评论作品不平移（抖X comment_interaction.disable_shift）
+                    if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_DISABLE_SHIFT, false)) {
+                        resetShift(decor);
+                    }
+                    // 禁用点击评论回复（抖X comment_interaction.fb9a1f8613）
+                    if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_FB9A1F8613, false)) {
+                        guardReplyClick(activity, panel);
                     }
                 } else {
                     commentPanelOpen = false;
@@ -237,6 +251,104 @@ final class CommentEnhancer {
             }
         }
         return false;
+    }
+
+    /** 打开评论不缩放视频：将评论区打开时被缩放的视图恢复为原始比例。
+     *  仅当用户开启 comment_interaction.6346a6d3d4 时每轮强制重置，
+     *  使评论区打开期间视频保持不缩放。 */
+    private static void resetVideoScale(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view.getScaleX() < 1.0f || view.getScaleY() < 1.0f) {
+            view.setScaleX(1.0f);
+            view.setScaleY(1.0f);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                resetVideoScale(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 打开评论作品不平移：将评论区打开时上移的作品视图恢复原位。
+     *  仅当用户开启 comment_interaction.disable_shift 时每轮强制重置。 */
+    private static void resetShift(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view.getTranslationY() != 0f) {
+            view.setTranslationY(0f);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                resetShift(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 禁用点击评论回复：在评论列表 RecyclerView 上拦截单击，
+     *  命中评论项时消费事件，阻止展开回复（抖X comment_interaction.fb9a1f8613）。 */
+    private static void guardReplyClick(Activity activity, View panel) {
+        if (activity == null || panel == null) {
+            return;
+        }
+        View rv = findRecyclerView(panel);
+        if (rv == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(rv.getTag())) {
+            return;
+        }
+        rv.setTag(Boolean.TRUE);
+        GestureDetector detector = new GestureDetector(activity,
+                new GestureDetector.SimpleOnGestureListener() {
+                    @Override
+                    public boolean onSingleTapUp(MotionEvent e) {
+                        return findHitComment(rv, e) != null;
+                    }
+                });
+        rv.setOnTouchListener((v, event) -> detector.onTouchEvent(event));
+    }
+
+    private static View findRecyclerView(View view) {
+        if (isRecyclerView(view)) {
+            return view;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findRecyclerView(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 判断评论列表上的点击是否落在某个评论项内 */
+    private static View findHitComment(View rv, MotionEvent e) {
+        if (!(rv instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) rv;
+        int x = (int) e.getX();
+        int y = (int) e.getY();
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child == null || child.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            if (x >= child.getLeft() && x <= child.getRight()
+                    && y >= child.getTop() && y <= child.getBottom()
+                    && isCommentItem(child)) {
+                return child;
+            }
+        }
+        return null;
     }
 
     /** 空评论时抑制输入框自动弹出：清除焦点并收起软键盘。 */

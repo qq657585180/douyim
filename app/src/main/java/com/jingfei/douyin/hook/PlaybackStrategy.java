@@ -81,6 +81,42 @@ final class PlaybackStrategy {
                     prefs, PlaybackPrefs.KEY_GESTURES_37B88FC1FB, false);
             ImmersiveUi.applyUiVisibilityOverrides(null, null, null, clean, null, null);
         }
+        // 抖X"显示播放时间"（playback.progress_time）+ 样式组（time_*）。
+        if (prefs.contains(PlaybackPrefs.KEY_PLAYBACK_PROGRESS_TIME)) {
+            boolean showTime = PlaybackPrefs.getBoolean(
+                    prefs, PlaybackPrefs.KEY_PLAYBACK_PROGRESS_TIME, false);
+            if (showTime) {
+                String pos = prefs.getString(
+                        PlaybackPrefs.KEY_PLAYBACK_TIME_POSITION, "right");
+                int size = prefs.getInt(PlaybackPrefs.KEY_PLAYBACK_TIME_SIZE, 14);
+                int color = parseColor(
+                        prefs.getString(PlaybackPrefs.KEY_PLAYBACK_TIME_COLOR, null),
+                        prefs.getInt(PlaybackPrefs.KEY_PLAYBACK_TIME_COLOR, 0xFFFFFF));
+                int opacity = prefs.getInt(
+                        PlaybackPrefs.KEY_PLAYBACK_TIME_OPACITY, 80);
+                int margin = prefs.getInt(
+                        PlaybackPrefs.KEY_PLAYBACK_TIME_MARGIN, 12);
+                int bottom = prefs.getInt(
+                        PlaybackPrefs.KEY_PLAYBACK_TIME_BOTTOM, 48);
+                PlaybackTimeOverlay.applyPrefs(
+                        true, pos, size, color, opacity, margin, bottom);
+            } else {
+                PlaybackTimeOverlay.applyPrefs(
+                        false, null, 0, 0, 0, 0, 0);
+            }
+        }
+    }
+
+    /** 解析颜色字符串（#RRGGBB），失败时回退默认值。 */
+    private static int parseColor(String text, int fallback) {
+        if (text != null && !text.isEmpty()) {
+            try {
+                return android.graphics.Color.parseColor(text);
+            } catch (IllegalArgumentException ignored) {
+                // 非法颜色串回退默认
+            }
+        }
+        return fallback;
     }
 
     static boolean bool(String key, boolean def) {
