@@ -19,6 +19,7 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.jingfei.douyin.hook.WebDavSync;
 import com.jingfei.douyin.prefs.SettingMeta;
 
 import java.util.List;
@@ -44,6 +45,7 @@ public final class GroupSettingsActivity extends Activity
     private SharedPreferences preferences;
     private boolean loading = true;
     private LinearLayout listContainer;
+    private XposedService service;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,6 +73,7 @@ public final class GroupSettingsActivity extends Activity
 
     @Override
     public void onServiceStateChanged(XposedService service) {
+        this.service = service;
         if (service == null) {
             preferences = null;
             setControlsEnabled(false);
@@ -99,6 +102,39 @@ public final class GroupSettingsActivity extends Activity
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.topMargin = dp(6);
         root.addView(subtitle, subtitleParams);
+
+        if ("system".equals(group)) {
+            LinearLayout webdavRow = new LinearLayout(this);
+            webdavRow.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams webdavRowParams = matchWrap();
+            webdavRowParams.topMargin = dp(16);
+            root.addView(webdavRow, webdavRowParams);
+
+            Button backupButton = new Button(this);
+            backupButton.setText("备份到 WebDAV");
+            backupButton.setTextColor(Color.WHITE);
+            backupButton.setTextSize(13);
+            backupButton.setAllCaps(false);
+            backupButton.setBackground(rounded(PRIMARY, 10));
+            LinearLayout.LayoutParams backupParams = wrapWrap();
+            backupParams.rightMargin = dp(6);
+            backupParams.weight = 1;
+            webdavRow.addView(backupButton, backupParams);
+
+            Button restoreButton = new Button(this);
+            restoreButton.setText("从 WebDAV 恢复");
+            restoreButton.setTextColor(Color.WHITE);
+            restoreButton.setTextSize(13);
+            restoreButton.setAllCaps(false);
+            restoreButton.setBackground(rounded(Color.rgb(60, 64, 75), 10));
+            LinearLayout.LayoutParams restoreParams = wrapWrap();
+            restoreParams.leftMargin = dp(6);
+            restoreParams.weight = 1;
+            webdavRow.addView(restoreButton, restoreParams);
+
+            backupButton.setOnClickListener(v -> runWebDav(true));
+            restoreButton.setOnClickListener(v -> runWebDav(false));
+        }
 
         LinearLayout.LayoutParams listParams = matchWrap();
         listParams.topMargin = dp(18);
@@ -248,6 +284,30 @@ public final class GroupSettingsActivity extends Activity
         if (current != null) {
             current.edit().putBoolean(key, value).apply();
         }
+    }
+
+    private void runWebDav(boolean backup) {
+        XposedService current = service;
+        if (current == null) {
+            Toast.makeText(this, "未连接 LSPosed 服务", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, backup ? "正在备份…" : "正在恢复…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                if (backup) {
+                    WebDavSync.backupAll(current);
+                } else {
+                    WebDavSync.restoreAll(current);
+                }
+                runOnUiThread(() -> Toast.makeText(this,
+                        backup ? "WebDAV 备份成功" : "WebDAV 恢复成功", Toast.LENGTH_SHORT).show());
+            } catch (Exception error) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        (backup ? "备份失败" : "恢复失败") + "：" + error.getMessage(),
+                        Toast.LENGTH_LONG).show());
+            }
+        }).start();
     }
 
     private void setControlsEnabled(boolean enabled) {
