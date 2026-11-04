@@ -25,6 +25,11 @@ final class PlayerHooks {
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private static volatile float playbackSpeed = 1f;
+    private static volatile boolean tempSpeedEnabled;
+    private static volatile float tempSpeedFactor = 1.5f;
+    private static volatile boolean tempSpeedActive;
+    private static volatile String playbackQuality;
+    private static volatile String liveQuality;
 
     /** 抖X"倍速"设置注入（0.25x–3.0x，默认 1x）。 */
     static void setPlaybackSpeed(float speed) {
@@ -34,6 +39,42 @@ final class PlayerHooks {
             speed = 3f;
         }
         playbackSpeed = speed;
+    }
+
+    /** 抖X"默认播放画质"设置注入（page.quality）。值可能是数字或"高清/超清"等字符串。 */
+    static void setPlaybackQuality(String quality) {
+        playbackQuality = quality == null ? null : quality.trim();
+    }
+
+    /** 抖X"直播默认画质"设置注入（live.41fb1b555b）。 */
+    static void setLivePlaybackQuality(String quality) {
+        liveQuality = quality == null ? null : quality.trim();
+    }
+
+    /** 抖X"临时倍速"设置注入（gestures.be54e501cb）。 */
+    static void setTempSpeed(float factor, boolean enabled) {
+        if (factor < 0.25f) {
+            factor = 0.25f;
+        } else if (factor > 3f) {
+            factor = 3f;
+        }
+        tempSpeedFactor = factor;
+        tempSpeedEnabled = enabled;
+        if (!enabled) {
+            tempSpeedActive = false;
+        }
+    }
+
+    /** 长按激活/取消临时倍速（由触摸 Hook 调用）。 */
+    static void setTemporarySpeedActive(boolean active) {
+        if (!tempSpeedEnabled || tempSpeedActive == active) {
+            return;
+        }
+        tempSpeedActive = active;
+        Object player = PlaybackState.engine();
+        if (player != null) {
+            applySpeedValue(player, active ? tempSpeedFactor : playbackSpeed);
+        }
     }
 
     private PlayerHooks() {
@@ -101,6 +142,7 @@ final class PlayerHooks {
                         Object player = chain.getThisObject();
                         PlaybackState.playing(player);
                         applySpeed(player);
+                        applyQuality(player);
                     } else {
                         PlaybackState.paused(chain.getThisObject());
                     }
@@ -225,7 +267,18 @@ final class PlayerHooks {
      * 失败静默（不同版本方法名不同，找不到不影响播放）。
      */
     private static void applySpeed(Object player) {
-        if (player == null || playbackSpeed <= 0f || Float.compare(playbackSpeed, 1f) == 0) {
+        if (player == null) {
+            return;
+        }
+        float speed = tempSpeedActive ? tempSpeedFactor : playbackSpeed;
+        if (speed <= 0f || Float.compare(speed, 1f) == 0) {
+            return;
+        }
+        applySpeedValue(player, speed);
+    }
+
+    private static void applySpeedValue(Object player, float speed) {
+        if (player == null || speed <= 0f || Float.compare(speed, 1f) == 0) {
             return;
         }
         Method method = findRateMethod(player.getClass());
@@ -233,10 +286,100 @@ final class PlayerHooks {
             return;
         }
         try {
-            method.invoke(player, playbackSpeed);
+            method.invoke(player, speed);
         } catch (Throwable ignored) {
             // 播放器可能不支持该速率，忽略
         }
+    }
+
+    /**
+     * 播放开始时应用抖X默认画质。反射常见画质方法：
+     * setVideoQuality(int|String) / setQuality(int) / setPlaybackQuality(int)
+     * / setResolution(String)。失败静默（不同版本方法名不同，不影响播放）。
+     */
+    private static void applyQuality(Object player) {
+        if (player == null) {
+            return;
+        }
+        // 直播画质优先于普通播放画质（直播播放器若复用同一引擎则生效）
+        String quality = (liveQuality != null && !liveQuality.isEmpty())
+                ? liveQuality : playbackQuality;
+        if (quality == null || quality.isEmpty()) {
+            return;
+        }
+        Method method = findQualityMethod(player.getClass());
+        if (method == null) {
+            return;
+        }
+        try {
+            if (method.getParameterTypes()[0] == int.class) {
+                method.invoke(player, parseQualityInt(quality));
+            } else {
+                method.invoke(player, quality);
+            }
+        } catch (Throwable ignored) {
+            // 播放器可能不支持该画质值，忽略
+        }
+    }
+
+    private static int parseQualityInt(String value) {
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            switch (value.toLowerCase()) {
+                case "流畅":
+                case "sd":
+                case "low":
+                case "smooth":
+                    return 1;
+                case "高清":
+                case "hd":
+                    return 2;
+                case "超清":
+                case "fullhd":
+                case "1080p":
+                    return 3;
+                case "原画":
+                case "original":
+                case "4k":
+                    return 4;
+                default:
+                    return -1;
+            }
+        }
+    }
+
+    private static Method QUALITY_METHOD;
+
+    private static Method findQualityMethod(Class<?> type) {
+        Method cached = QUALITY_METHOD;
+        if (cached != null && cached.getDeclaringClass().isAssignableFrom(type)) {
+            return cached;
+        }
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            for (Method method : current.getDeclaredMethods()) {
+                if (method.getParameterCount() == 1) {
+                    String lower = method.getName().toLowerCase();
+                    Class<?> paramType = method.getParameterTypes()[0];
+                    boolean numeric = paramType == int.class || paramType == Integer.class;
+                    boolean textual = paramType == String.class;
+                    if ((numeric || textual)
+                            && (lower.equals("setvideoquality")
+                            || lower.equals("setquality")
+                            || lower.equals("setplaybackquality")
+                            || lower.equals("setresolution"))) {
+                        try {
+                            method.setAccessible(true);
+                        } catch (Throwable ignored) {
+                            // 非公开方法不可访问时继续尝试公开方法
+                        }
+                        QUALITY_METHOD = method;
+                        return method;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private static Method RATE_METHOD;

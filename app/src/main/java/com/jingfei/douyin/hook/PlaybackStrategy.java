@@ -81,29 +81,35 @@ final class PlaybackStrategy {
                     prefs, PlaybackPrefs.KEY_GESTURES_37B88FC1FB, false);
             ImmersiveUi.applyUiVisibilityOverrides(null, null, null, clean, null, null);
         }
-        // 抖X"显示播放时间"（playback.progress_time）+ 样式组（time_*）。
-        if (prefs.contains(PlaybackPrefs.KEY_PLAYBACK_PROGRESS_TIME)) {
-            boolean showTime = PlaybackPrefs.getBoolean(
-                    prefs, PlaybackPrefs.KEY_PLAYBACK_PROGRESS_TIME, false);
-            if (showTime) {
-                String pos = prefs.getString(
-                        PlaybackPrefs.KEY_PLAYBACK_TIME_POSITION, "right");
-                int size = prefs.getInt(PlaybackPrefs.KEY_PLAYBACK_TIME_SIZE, 14);
-                int color = parseColor(
-                        prefs.getString(PlaybackPrefs.KEY_PLAYBACK_TIME_COLOR, null),
-                        prefs.getInt(PlaybackPrefs.KEY_PLAYBACK_TIME_COLOR, 0xFFFFFF));
-                int opacity = prefs.getInt(
-                        PlaybackPrefs.KEY_PLAYBACK_TIME_OPACITY, 80);
-                int margin = prefs.getInt(
-                        PlaybackPrefs.KEY_PLAYBACK_TIME_MARGIN, 12);
-                int bottom = prefs.getInt(
-                        PlaybackPrefs.KEY_PLAYBACK_TIME_BOTTOM, 48);
-                PlaybackTimeOverlay.applyPrefs(
-                        true, pos, size, color, opacity, margin, bottom);
-            } else {
-                PlaybackTimeOverlay.applyPrefs(
-                        false, null, 0, 0, 0, 0, 0);
-            }
+        // 抖X"显示播放时间"（playback.progress_time）+ 时间独立常显（playback.time_independent）+ 样式组（time_*）。
+        boolean timeIndependent = prefs.getBoolean(
+                PlaybackPrefs.KEY_PLAYBACK_TIME_INDEPENDENT, false);
+        // 播放器诊断信息（quality.dd11313c92）开启时强制显示叠加层
+        boolean diagnostics = prefs.getBoolean(
+                PlaybackPrefs.KEY_QUALITY_DD11313C92, false);
+        boolean showTime = prefs.getBoolean(
+                PlaybackPrefs.KEY_PLAYBACK_PROGRESS_TIME, false)
+                || timeIndependent || diagnostics;
+        if (showTime) {
+            String pos = prefs.getString(
+                    PlaybackPrefs.KEY_PLAYBACK_TIME_POSITION, "right");
+            int size = prefs.getInt(PlaybackPrefs.KEY_PLAYBACK_TIME_SIZE, 14);
+            int color = parseColor(
+                    prefs.getString(PlaybackPrefs.KEY_PLAYBACK_TIME_COLOR, null),
+                    prefs.getInt(PlaybackPrefs.KEY_PLAYBACK_TIME_COLOR, 0xFFFFFF));
+            int opacity = prefs.getInt(
+                    PlaybackPrefs.KEY_PLAYBACK_TIME_OPACITY, 80);
+            int margin = prefs.getInt(
+                    PlaybackPrefs.KEY_PLAYBACK_TIME_MARGIN, 12);
+            int bottom = prefs.getInt(
+                    PlaybackPrefs.KEY_PLAYBACK_TIME_BOTTOM, 48);
+            PlaybackTimeOverlay.applyPrefs(
+                    true, pos, size, color, opacity, margin, bottom);
+            PlaybackTimeOverlay.setDiagnosticsEnabled(diagnostics);
+        } else {
+            PlaybackTimeOverlay.applyPrefs(
+                    false, null, 0, 0, 0, 0, 0);
+            PlaybackTimeOverlay.setDiagnosticsEnabled(false);
         }
         // 抖X"弹幕增强"：屏蔽关键词（danmaku.1d6c3a1841）+ 弹幕颜色（danmaku.9daa16e0ab）
         // + 重复弹幕去重（danmaku.01c0117c23）。
@@ -129,9 +135,47 @@ final class PlaybackStrategy {
         }
         DanmakuEnhancer.applyPrefs(
                 danmakuFilter, danmakuKeywords, danmakuColor, danmakuDedupe);
+        // 抖X"解除弹幕屏蔽词30条限制"（danmaku.a1ce67ce92）→ 面板 Hook
+        DanmakuBlockWordPanelEnhancer.applyPrefs(PlaybackPrefs.getBoolean(
+                prefs, PlaybackPrefs.KEY_DANMAKU_A1CE67CE92, false));
         // 隐藏视频进度条（progress.hidden）→ ImmersiveUi
         ImmersiveUi.setHideProgressEnabled(PlaybackPrefs.getBoolean(
                 prefs, PlaybackPrefs.KEY_PROGRESS_HIDDEN, false));
+        // 常驻进度条（progress.20ee30e2ae）→ ImmersiveUi
+        ImmersiveUi.setKeepProgressVisible(PlaybackPrefs.getBoolean(
+                prefs, PlaybackPrefs.KEY_PROGRESS_20EE30E2AE, false));
+        // 长按临时倍速（gestures.be54e501cb）→ ImmersiveUi / PlayerHooks
+        boolean tempSpeedEnabled = false;
+        float tempSpeedFactor = 1.5f;
+        if (prefs.contains(PlaybackPrefs.KEY_GESTURES_BE54E501CB)) {
+            String tempSpeedText = prefs.getString(
+                    PlaybackPrefs.KEY_GESTURES_BE54E501CB, null);
+            if (tempSpeedText != null) {
+                try {
+                    tempSpeedFactor = Float.parseFloat(tempSpeedText);
+                    tempSpeedEnabled = true;
+                } catch (NumberFormatException ignored) {
+                    tempSpeedEnabled = Boolean.parseBoolean(tempSpeedText);
+                }
+            }
+        }
+        ImmersiveUi.setTempSpeedEnabled(tempSpeedEnabled);
+        PlayerHooks.setTempSpeed(tempSpeedFactor, tempSpeedEnabled);
+
+        // 抖X"默认播放画质"（page.quality）
+        if (prefs.contains(PlaybackPrefs.KEY_PAGE_QUALITY)) {
+            String quality = prefs.getString(PlaybackPrefs.KEY_PAGE_QUALITY, null);
+            if (quality == null) {
+                quality = String.valueOf(prefs.getInt(PlaybackPrefs.KEY_PAGE_QUALITY, 0));
+            }
+            PlayerHooks.setPlaybackQuality(quality);
+        }
+
+        // 抖X"自动跳过章节广告"（extras.d2a3ea57f1）
+        if (prefs.contains(PlaybackPrefs.KEY_EXTRAS_D2A3EA57F1)) {
+            ImmersiveUi.setAutoSkipChapterAd(PlaybackPrefs.getBoolean(
+                    prefs, PlaybackPrefs.KEY_EXTRAS_D2A3EA57F1, false));
+        }
     }
 
     /** 解析颜色字符串（#RRGGBB），失败时回退默认值。 */

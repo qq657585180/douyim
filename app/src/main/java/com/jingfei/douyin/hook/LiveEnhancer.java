@@ -37,8 +37,10 @@ final class LiveEnhancer {
             p.registerOnSharedPreferenceChangeListener(LISTENER);
         }
         try {
+            // 页面总开关（page.live）
+            boolean pageEnabled = LivePrefs.getBoolean(p, LivePrefs.KEY_PAGE_LIVE, true);
             // 直播具体人数（live.0d1ad71357）→ ExactNumbers
-            ExactNumbers.setLiveEnabled(LivePrefs.getBoolean(
+            ExactNumbers.setLiveEnabled(pageEnabled && LivePrefs.getBoolean(
                     p, LivePrefs.KEY_LIVE_0D1AD71357, false));
             module.log(Log.INFO, DouyinModule.TAG,
                     "LiveEnhancer installed (douyin_live)");
@@ -70,12 +72,30 @@ final class LiveEnhancer {
             scanning = false;
             return;
         }
+        // 页面总开关（page.live）：关闭则直播增强整体不生效
+        if (!bool(LivePrefs.KEY_PAGE_LIVE, true)) {
+            PlayerHooks.setLivePlaybackQuality(null);
+            scanning = false;
+            return;
+        }
         try {
             View decor = activity.getWindow().getDecorView();
             if (decor != null) {
                 // 直播清爽（live.7420f518ca）：隐藏礼物入口
                 if (bool(LivePrefs.KEY_LIVE_7420F518CA, false)) {
                     hideByText(decor, "礼物", 1, true);
+                }
+                // 直播默认画质（live.41fb1b555b）：注入播放器画质（若直播复用视频引擎则生效）
+                String quality = string(LivePrefs.KEY_LIVE_41FB1B555B, null);
+                if (quality != null && !quality.isEmpty()) {
+                    PlayerHooks.setLivePlaybackQuality(quality);
+                }
+                // 直播信息入口（live.964ffe7b61）/ 当前直播信息（live.0e64c35bc2）：隐藏人数/在看信息条
+                if (bool(LivePrefs.KEY_LIVE_964FFE7B61, false)
+                        || bool(LivePrefs.KEY_LIVE_0E64C35BC2, false)) {
+                    hideByText(decor, "人观看", 2, true);
+                    hideByText(decor, "在看", 2, true);
+                    hideByText(decor, "在线", 2, true);
                 }
             }
         } catch (Throwable ignored) {

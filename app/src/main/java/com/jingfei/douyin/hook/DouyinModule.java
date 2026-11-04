@@ -89,6 +89,12 @@ public final class DouyinModule extends XposedModule {
                 () -> ProfileEnhancer.install(this, param.getClassLoader()));
         installSubsystem("webdav sync",
                 () -> WebDavSync.install(this, param.getClassLoader()));
+        installSubsystem("search enhancer",
+                () -> SearchEnhancer.install(this, param.getClassLoader()));
+        installSubsystem("share enhancer",
+                () -> ShareEnhancer.install(this, param.getClassLoader()));
+        installSubsystem("danmaku block word panel",
+                () -> DanmakuBlockWordPanelEnhancer.install(this, param.getClassLoader()));
         log(Log.INFO, TAG, "hook installation finished for " + param.getPackageName());
     }
 
@@ -134,6 +140,9 @@ public final class DouyinModule extends XposedModule {
                     CommentEnhancer.onActivityResumed((Activity) chain.getThisObject());
                     MessagePrivacy.onActivityResumed((Activity) chain.getThisObject());
                     LiveEnhancer.onActivityResumed((Activity) chain.getThisObject());
+                    ProfileEnhancer.onActivityResumed((Activity) chain.getThisObject());
+                    SearchEnhancer.onActivityResumed((Activity) chain.getThisObject());
+                    ShareEnhancer.onActivityResumed((Activity) chain.getThisObject());
                     return result;
                 });
 
@@ -146,6 +155,9 @@ public final class DouyinModule extends XposedModule {
                     CommentEnhancer.onActivityPaused((Activity) chain.getThisObject());
                     MessagePrivacy.onActivityPaused((Activity) chain.getThisObject());
                     LiveEnhancer.onActivityPaused((Activity) chain.getThisObject());
+                    ProfileEnhancer.onActivityPaused((Activity) chain.getThisObject());
+                    SearchEnhancer.onActivityPaused((Activity) chain.getThisObject());
+                    ShareEnhancer.onActivityPaused((Activity) chain.getThisObject());
                     return chain.proceed();
                 });
     }

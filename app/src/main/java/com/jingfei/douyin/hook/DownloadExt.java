@@ -38,6 +38,20 @@ final class DownloadExt {
         if (prefs == null) {
             return;
         }
+        // 页面总开关（page.download）：关闭时恢复默认下载行为
+        boolean pageEnabled = DownloadPrefs.getBoolean(
+                prefs, DownloadPrefs.KEY_PAGE_DOWNLOAD, true);
+        if (!pageEnabled) {
+            VideoDownloader.setDownloadSubdirectory(null);
+            VideoDownloader.setPathTemplate(null);
+            VideoDownloader.setPathDateFormat(null);
+            VideoDownloader.setSaveToSystemAlbum(false);
+            VideoDownloader.setShowDownloadNotification(true);
+            VideoDownloader.setConfirmFileNameBeforeSave(false);
+            VideoDownloader.setCheckNotificationPermission(false);
+            VideoDownloader.setPreferredFormat(null);
+            return;
+        }
         String subdirectory = DownloadPrefs.getString(
                 prefs, DownloadPrefs.KEY_DOWNLOAD_3B44F4C721, "");
         if (subdirectory == null || subdirectory.isEmpty()) {
@@ -59,6 +73,11 @@ final class DownloadExt {
         boolean confirmFileName = DownloadPrefs.getBoolean(
                 prefs, DownloadPrefs.KEY_DOWNLOAD_INTERACTION_60B3A39899, false);
         VideoDownloader.setConfirmFileNameBeforeSave(confirmFileName);
+        boolean checkNotification = DownloadPrefs.getBoolean(
+                prefs, DownloadPrefs.KEY_DOWNLOAD_INTERACTION_B3668C01D7, false);
+        VideoDownloader.setCheckNotificationPermission(checkNotification);
+        VideoDownloader.setPreferredFormat(DownloadPrefs.getString(
+                prefs, DownloadPrefs.KEY_DOWNLOAD_E4E86807EA, null));
     }
 
     static boolean bool(String key, boolean def) {

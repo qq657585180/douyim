@@ -2,22 +2,36 @@ package com.jingfei.douyin.hook;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentValues;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.jingfei.douyin.prefs.CommentPrefs;
 
+import java.io.OutputStream;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Method;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -42,9 +56,24 @@ final class CommentEnhancer {
     /** 评论面板当前是否处于打开状态（用于检测打开瞬间）。 */
     private static volatile boolean commentPanelOpen;
 
+    /** 剪贴板守卫：复制评论时去除艾特前缀（抖X comments.b213d022be）。 */
+    private static volatile ClipboardManager clipboard;
+    private static volatile ClipboardManager.OnPrimaryClipChangedListener clipGuard;
+    private static volatile String lastClipText;
+
     /** 评论区子项的时间/操作文本特征，用于区分评论项与视频项 */
     private static final Pattern TIME_PATTERN = Pattern.compile(
             "刚刚|分钟前|小时前|天前|昨天|回复|赞");
+
+    /** 评论时间文本特征（仅时间，用于隐藏评论时间控件，避免误伤含"回复/赞"的正文） */
+    private static final Pattern TIME_ONLY_PATTERN = Pattern.compile(
+            "刚刚|分钟前|小时前|天前|昨天");
+
+    /** 评论时间格式化完成标记的 View tag key（任意不冲突的 int） */
+    private static final int COMMENT_TIME_TAG_KEY = 0x2d0a5e01;
+
+    /** 评论图片长按保存的 View tag key */
+    private static final int COMMENT_IMAGE_LONGPRESS_TAG_KEY = 0x2d0a5e02;
 
     /** 内置广告评论特征词 */
     private static final String[] AD_HINTS = {
@@ -90,6 +119,92 @@ final class CommentEnhancer {
             currentActivity = null;
         }
         commentPanelOpen = false;
+        unregisterClipboardGuard();
+    }
+
+    /** 注册剪贴板守卫：评论面板打开期间，复制文本去除艾特前缀。 */
+    private static void registerClipboardGuard(Activity activity) {
+        if (activity == null || clipGuard != null) {
+            return;
+        }
+        clipboard = (ClipboardManager) activity
+                .getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            return;
+        }
+        clipGuard = () -> {
+            try {
+                if (!commentPanelOpen) {
+                    return;
+                }
+                CharSequence cs = clipboard.getPrimaryClip() == null
+                        || clipboard.getPrimaryClip().getItemCount() == 0
+                        ? null
+                        : clipboard.getPrimaryClip().getItemAt(0)
+                                .coerceToText(clipboard.getContext());
+                if (cs == null || cs.length() == 0) {
+                    return;
+                }
+                String text = cs.toString();
+                if (text.equals(lastClipText)) {
+                    return;
+                }
+                String stripped = stripAtPrefix(text);
+                if (stripped == null || stripped.equals(text)) {
+                    lastClipText = text;
+                    return;
+                }
+                lastClipText = stripped;
+                clipboard.setPrimaryClip(
+                        ClipData.newPlainText("comment", stripped));
+            } catch (Throwable ignored) {
+                // 剪贴板权限或异常时忽略
+            }
+        };
+        clipboard.addPrimaryClipChangedListener(clipGuard);
+    }
+
+    private static void unregisterClipboardGuard() {
+        if (clipboard != null && clipGuard != null) {
+            try {
+                clipboard.removePrimaryClipChangedListener(clipGuard);
+            } catch (Throwable ignored) {
+                // 忽略注销异常
+            }
+        }
+        clipboard = null;
+        clipGuard = null;
+        lastClipText = null;
+    }
+
+    /** 去除评论复制文本开头的艾特前缀：@昵称 正文 → 正文。 */
+    private static String stripAtPrefix(String text) {
+        if (text == null) {
+            return null;
+        }
+        String trimmed = text.trim();
+        if (!trimmed.startsWith("@")) {
+            return text;
+        }
+        int i = 1;
+        while (i < trimmed.length()) {
+            char c = trimmed.charAt(i);
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r'
+                    || c == '：' || c == ':') {
+                break;
+            }
+            i++;
+        }
+        while (i < trimmed.length()) {
+            char c = trimmed.charAt(i);
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r'
+                    && c != '：' && c != ':') {
+                break;
+            }
+            i++;
+        }
+        String result = trimmed.substring(i);
+        return result.isEmpty() ? text : result;
     }
 
     private static void scanComments() {
@@ -129,10 +244,25 @@ final class CommentEnhancer {
                     applyCommentAppearance(panel);
                     // 评论准确点赞数（抖X comments.70151eae18）
                     ExactNumbers.scanComments(panel);
+                    // 评论时间格式（抖X comments.96c0e404c6 / comment.time）
+                    applyCommentTimeFormat(panel);
+                    // 评论图片长按保存（抖X comments.image_original）
+                    installCommentImageLongClick(panel);
                     // 评论面板高度（抖X comment_appearance.60c73f44b9）
                     applyPanelHeight(panel);
+                    // 评论图片缩放（抖X comment_appearance.37dc6e6be5）
+                    applyCommentImageScale(panel);
+                    // 评论控件隐藏（抖X comment.control.*）
+                    applyCommentControlVisibility(panel);
+                    // 长按查看 IP 属地（抖X comment.region）
+                    installRegionLongClick(panel);
+                    // 评论项长按菜单（抖X comments.cc7c36fa92）
+                    installCommentLongClickMenu(panel);
+                    // 复制评论去除艾特前缀（抖X comments.b213d022be）
+                    registerClipboardGuard(activity);
                 } else {
                     commentPanelOpen = false;
+                    unregisterClipboardGuard();
                 }
                 View target = panel != null ? panel : decor;
                 applyUiVisibility(target);
@@ -204,6 +334,82 @@ final class CommentEnhancer {
         if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_008507ACCF, false)) {
             hideByText(panel, "踩", 1, false);
         }
+        // 隐藏“我的评论”入口（抖X comments.753d08c43d）
+        if (bool(CommentPrefs.KEY_COMMENTS_753D08C43D, false)) {
+            hideByText(panel, "我的评论", 1, false);
+        }
+        // 隐藏宿主隐藏的小表情（抖X comment.show_hidden_emoji）
+        if (bool(CommentPrefs.KEY_COMMENT_SHOW_HIDDEN_EMOJI, false)) {
+            hideSmallEmojiViews(panel);
+        }
+        // 发布蓝字评论（抖X comment_interaction.ea615e3e1d）：发布按钮文字变蓝
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_EA615E3E1D, false)) {
+            setPublishButtonBlue(panel);
+        }
+        // 始终显示位置入口（抖X comment_interaction.73cc3f4abf）
+        if (bool(CommentPrefs.KEY_COMMENT_INTERACTION_73CC3F4ABF, false)) {
+            showLocationEntry(panel);
+        }
+    }
+
+    /** 发布按钮文字变蓝。 */
+    private static void setPublishButtonBlue(View root) {
+        if (root instanceof TextView) {
+            TextView tv = (TextView) root;
+            CharSequence cs = tv.getText();
+            if (cs != null && cs.toString().trim().equals("发布")) {
+                tv.setTextColor(0xFF1E90FF);
+                return;
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) root;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                setPublishButtonBlue(g.getChildAt(i));
+            }
+        }
+    }
+
+    /** 显示输入栏的位置入口按钮（默认可能隐藏）。 */
+    private static void showLocationEntry(View root) {
+        CharSequence desc = root.getContentDescription();
+        if (desc != null && desc.toString().contains("位置")
+                && root.getVisibility() != View.VISIBLE) {
+            root.setVisibility(View.VISIBLE);
+            return;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) root;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                showLocationEntry(g.getChildAt(i));
+            }
+        }
+    }
+
+    /** 隐藏评论项中的小表情视图：评论面板内 10-32dp 的方形小 ImageView。 */
+    private static void hideSmallEmojiViews(View root) {
+        if (root instanceof android.widget.ImageView) {
+            android.widget.ImageView iv = (android.widget.ImageView) root;
+            int w = iv.getWidth();
+            int h = iv.getHeight();
+            if (w > 0 && h > 0) {
+                float density = iv.getResources().getDisplayMetrics().density;
+                int minPx = Math.round(10 * density);
+                int maxPx = Math.round(32 * density);
+                if (w >= minPx && w <= maxPx && h >= minPx && h <= maxPx
+                        && Math.abs(w - h) <= Math.max(2, Math.round(2 * density))) {
+                    // 避免隐藏头像：头像一般在评论项左侧且尺寸更大，方形小图视为表情
+                    if (iv.getVisibility() == View.VISIBLE) {
+                        iv.setVisibility(View.GONE);
+                    }
+                }
+            }
+        } else if (root instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) root;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                hideSmallEmojiViews(g.getChildAt(i));
+            }
+        }
     }
 
     /** 评论区外观：评论文字颜色 + 自定义评论背景（颜色/透明度）。
@@ -252,6 +458,22 @@ final class CommentEnhancer {
                 panel.setBackgroundColor(bgColor);
             }
         }
+        // 评论面板透明度（抖X comment.control.panel_opacity，0-100）
+        int panelOpacity = integer(CommentPrefs.KEY_COMMENT_CONTROL_PANEL_OPACITY, -1);
+        if (panelOpacity >= 0 && panelOpacity <= 100) {
+            android.graphics.drawable.Drawable bg = panel.getBackground();
+            if (bg != null) {
+                bg.setAlpha(panelOpacity * 255 / 100);
+            } else {
+                panel.setAlpha(panelOpacity / 100f);
+            }
+        }
+        // 评论面板液态玻璃（glass.comment）：最后应用，覆盖自定义背景
+        GlassUi.applyCommentGlass(panel);
+        // 动态模糊背景（comment_appearance.2d7b8ec9a3）：独立于 glass.comment 强制模糊
+        if (bool(CommentPrefs.KEY_COMMENT_APPEARANCE_2D7B8EC9A3, false)) {
+            GlassUi.applyCommentGlassForce(panel);
+        }
     }
 
     /** 评论面板高度（抖X comment_appearance.60c73f44b9，值为屏幕高度百分比）。 */
@@ -272,6 +494,426 @@ final class CommentEnhancer {
         int screenHeight = panel.getResources().getDisplayMetrics().heightPixels;
         lp.height = screenHeight * pct / 100;
         panel.setLayoutParams(lp);
+    }
+
+    /** 评论图片缩放（抖X comment_appearance.37dc6e6be5，值为百分比）。 */
+    private static void applyCommentImageScale(View panel) {
+        if (panel == null) {
+            return;
+        }
+        int pct = integer(CommentPrefs.KEY_COMMENT_APPEARANCE_37DC6E6BE5, 0);
+        if (pct <= 0 || pct == 100) {
+            return;
+        }
+        int screenWidth = panel.getResources().getDisplayMetrics().widthPixels;
+        scaleImagesRecursive(panel, pct, screenWidth);
+    }
+
+    /** 递归缩放评论大图（宽度超过屏幕 30% 的 ImageView，头像等小图不动）。 */
+    private static void scaleImagesRecursive(View view, int pct, int screenWidth) {
+        if (view instanceof ImageView) {
+            ImageView image = (ImageView) view;
+            int width = image.getWidth();
+            int height = image.getHeight();
+            if (width > 0 && height > 0
+                    && width > screenWidth * 0.3f) {
+                ViewGroup.LayoutParams lp = image.getLayoutParams();
+                if (lp != null) {
+                    int newWidth = width * pct / 100;
+                    int newHeight = height * pct / 100;
+                    if (newWidth > 0 && newHeight > 0
+                            && (lp.width != newWidth || lp.height != newHeight)) {
+                        lp.width = newWidth;
+                        lp.height = newHeight;
+                        image.setLayoutParams(lp);
+                    }
+                }
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                scaleImagesRecursive(group.getChildAt(i), pct, screenWidth);
+            }
+        }
+    }
+
+    /** 评论时间格式（抖X comments.96c0e404c6 模板 + comment.time 完整时间）。
+     *  通过 RecyclerView#getChildViewHolder 反射拿到评论 ViewHolder 的
+     *  getComment()/getCreateTime()，把"x分钟前"替换为完整时间。 */
+    private static void applyCommentTimeFormat(View panel) {
+        if (panel == null) {
+            return;
+        }
+        String template = string(CommentPrefs.KEY_COMMENTS_96C0E404C6, null);
+        boolean fullTime = bool(CommentPrefs.KEY_COMMENT_TIME_DOT, false);
+        if ((template == null || template.isEmpty()) && !fullTime) {
+            return;
+        }
+        String pattern = (template != null && !template.isEmpty())
+                ? template : "yyyy-MM-dd HH:mm";
+        final SimpleDateFormat sdf;
+        try {
+            sdf = new SimpleDateFormat(pattern, Locale.CHINA);
+        } catch (IllegalArgumentException ignored) {
+            return;
+        }
+        View rv = findRecyclerView(panel);
+        if (!(rv instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) rv;
+        try {
+            Method getChildViewHolder =
+                    rv.getClass().getMethod("getChildViewHolder", View.class);
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child == null || child.getVisibility() != View.VISIBLE
+                        || child.getTag(COMMENT_TIME_TAG_KEY) != null) {
+                    continue;
+                }
+                Object holder = getChildViewHolder.invoke(rv, child);
+                long createTime = readCommentCreateTime(holder);
+                if (createTime <= 0) {
+                    continue;
+                }
+                TextView timeView = findTimeTextView(child);
+                if (timeView == null) {
+                    continue;
+                }
+                long millis = createTime;
+                if (millis < 1_000_000_000_000L) {
+                    millis *= 1000L;
+                }
+                timeView.setText(sdf.format(new Date(millis)));
+                child.setTag(COMMENT_TIME_TAG_KEY, Boolean.TRUE);
+            }
+        } catch (Throwable ignored) {
+            // 反射失败（评论结构变化）时本轮跳过
+        }
+    }
+
+    /** 反射调用 ViewHolder.getComment() 再取 getCreateTime()（秒）。 */
+    private static long readCommentCreateTime(Object holder) {
+        if (holder == null) {
+            return 0L;
+        }
+        try {
+            Method getComment = holder.getClass().getMethod("getComment");
+            Object comment = getComment.invoke(holder);
+            if (comment == null) {
+                return 0L;
+            }
+            Method getCreateTime = comment.getClass().getMethod("getCreateTime");
+            Object value = getCreateTime.invoke(comment);
+            return value instanceof Number ? ((Number) value).longValue() : 0L;
+        } catch (Throwable ignored) {
+            return 0L;
+        }
+    }
+
+    /** 在评论项内查找时间文本控件（"刚刚/x分钟前/昨天"）。 */
+    private static TextView findTimeTextView(View view) {
+        if (view instanceof TextView) {
+            TextView tv = (TextView) view;
+            CharSequence cs = tv.getText();
+            if (cs != null && TIME_ONLY_PATTERN.matcher(cs.toString()).find()) {
+                return tv;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                TextView found = findTimeTextView(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 评论图片长按保存到相册（抖X comments.image_original）。
+     *  对评论大图设置长按监听，弹出确认后把当前显示的 Bitmap 写入系统相册。 */
+    private static void installCommentImageLongClick(View panel) {
+        if (panel == null
+                || !bool(CommentPrefs.KEY_COMMENTS_IMAGE_ORIGINAL, false)) {
+            return;
+        }
+        View rv = findRecyclerView(panel);
+        if (!(rv instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) rv;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child != null && child.getVisibility() == View.VISIBLE) {
+                applyImageLongClick(child);
+            }
+        }
+    }
+
+    private static void applyImageLongClick(View view) {
+        if (view instanceof ImageView) {
+            ImageView image = (ImageView) view;
+            if (image.getTag(COMMENT_IMAGE_LONGPRESS_TAG_KEY) != null) {
+                return;
+            }
+            int width = image.getWidth();
+            int screenWidth = image.getResources()
+                    .getDisplayMetrics().widthPixels;
+            if (width <= 0 || width < screenWidth * 0.3f) {
+                return; // 只处理评论大图，头像等小图不动
+            }
+            image.setTag(COMMENT_IMAGE_LONGPRESS_TAG_KEY, Boolean.TRUE);
+            image.setOnLongClickListener(v -> {
+                saveCommentImage(v);
+                return true;
+            });
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                applyImageLongClick(group.getChildAt(i));
+            }
+        }
+    }
+
+    private static void saveCommentImage(View v) {
+        Activity activity = currentActivity == null ? null : currentActivity.get();
+        if (activity == null || !(v instanceof ImageView)) {
+            return;
+        }
+        android.graphics.drawable.Drawable drawable =
+                ((ImageView) v).getDrawable();
+        if (!(drawable instanceof BitmapDrawable)) {
+            return;
+        }
+        Bitmap bitmap = ((BitmapDrawable) drawable).getBitmap();
+        if (bitmap == null) {
+            return;
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("保存评论图片")
+                .setMessage("把这张图片保存到系统相册吗？")
+                .setPositiveButton("保存", (d, w) ->
+                        saveBitmapToGallery(activity, bitmap))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private static void saveBitmapToGallery(Activity activity, Bitmap bitmap) {
+        try {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME,
+                    "douyin_comment_" + System.currentTimeMillis() + ".jpg");
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+            Uri uri = activity.getContentResolver().insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri != null) {
+                OutputStream os = activity.getContentResolver()
+                        .openOutputStream(uri);
+                if (os != null) {
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, os);
+                    os.close();
+                }
+            }
+        } catch (Throwable ignored) {
+            // 写入相册失败（权限/存储异常）时静默忽略
+        }
+    }
+
+    /** 评论控件隐藏（抖X comment.control.*）：
+     *  在评论列表的每个评论项内，按开关隐藏头像/昵称/正文/时间/IP 属地。 */
+    private static void applyCommentControlVisibility(View panel) {
+        if (panel == null) {
+            return;
+        }
+        boolean hideAvatar = bool(CommentPrefs.KEY_COMMENT_CONTROL_AVATAR, false);
+        boolean hideNickname = bool(CommentPrefs.KEY_COMMENT_CONTROL_NICKNAME, false);
+        boolean hideText = bool(CommentPrefs.KEY_COMMENT_CONTROL_TEXT, false);
+        boolean hideTime = bool(CommentPrefs.KEY_COMMENT_CONTROL_TIME, false);
+        boolean hideIp = bool(CommentPrefs.KEY_COMMENT_CONTROL_IP, false);
+        if (!hideAvatar && !hideNickname && !hideText && !hideTime && !hideIp) {
+            return;
+        }
+        View rv = findRecyclerView(panel);
+        if (!(rv instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) rv;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child != null && child.getVisibility() == View.VISIBLE
+                    && isCommentItem(child)) {
+                applyControlOnItem(child,
+                        hideAvatar, hideNickname, hideText, hideTime, hideIp);
+            }
+        }
+    }
+
+    /** 长按查看 IP 属地（抖X comment.region）：长按评论属地文本弹出完整属地并可复制。 */
+    private static void installRegionLongClick(View panel) {
+        if (panel == null || !bool(CommentPrefs.KEY_COMMENT_REGION, false)) {
+            return;
+        }
+        // 属地已被"隐藏 IP 属地"隐藏时无需安装
+        if (bool(CommentPrefs.KEY_COMMENT_CONTROL_IP, false)) {
+            return;
+        }
+        View rv = findRecyclerView(panel);
+        if (!(rv instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) rv;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child != null && child.getVisibility() == View.VISIBLE
+                    && isCommentItem(child)) {
+                applyRegionLongClickOnItem(child);
+            }
+        }
+    }
+
+    /** 为单个评论项中的属地文本安装长按监听。 */
+    private static void applyRegionLongClickOnItem(View item) {
+        if (!(item instanceof ViewGroup)) {
+            return;
+        }
+        List<View> textViews = new ArrayList<>();
+        collectTextViews(item, textViews);
+        for (View tv : textViews) {
+            if (tv.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            String text = ((TextView) tv).getText().toString();
+            if (isLocationText(text)) {
+                tv.setOnLongClickListener(v -> {
+                    showRegionDialog(tv.getContext(), text);
+                    return true;
+                });
+            }
+        }
+    }
+
+    /** 弹出属地对话框，支持一键复制。 */
+    private static void showRegionDialog(Context context, String region) {
+        Activity activity = currentActivity == null ? null : currentActivity.get();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            return;
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("IP 属地")
+                .setMessage(region)
+                .setPositiveButton("复制", (d, w) -> {
+                    ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null) {
+                        cm.setPrimaryClip(ClipData.newPlainText("IP属地", region));
+                    }
+                })
+                .setNegativeButton("关闭", null)
+                .show();
+    }
+
+    /** 单个评论项内按开关隐藏对应控件。 */
+    private static void applyControlOnItem(View item,
+                                           boolean hideAvatar, boolean hideNickname,
+                                           boolean hideText, boolean hideTime,
+                                           boolean hideIp) {
+        if (!(item instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) item;
+        List<View> textViews = new ArrayList<>();
+        collectTextViews(group, textViews);
+        List<View> imageViews = new ArrayList<>();
+        collectImageViews(group, imageViews);
+
+        // 昵称：评论项内第一个文本控件（通常位于头像右侧）
+        if (hideNickname && !textViews.isEmpty()) {
+            setControlVisibility(textViews.get(0), View.GONE);
+        }
+        // 时间 / IP 属地：按文本特征匹配
+        if (hideTime || hideIp) {
+            for (View tv : textViews) {
+                if (tv.getVisibility() != View.VISIBLE) {
+                    continue;
+                }
+                String text = ((TextView) tv).getText().toString();
+                if (hideTime && TIME_ONLY_PATTERN.matcher(text).find()) {
+                    setControlVisibility(tv, View.GONE);
+                } else if (hideIp && isLocationText(text)) {
+                    setControlVisibility(tv, View.GONE);
+                }
+            }
+        }
+        // 正文：评论项内最宽的可见文本控件
+        if (hideText) {
+            View best = null;
+            int bestWidth = -1;
+            for (View tv : textViews) {
+                if (tv.getVisibility() != View.VISIBLE) {
+                    continue;
+                }
+                if (tv.getWidth() > bestWidth) {
+                    bestWidth = tv.getWidth();
+                    best = tv;
+                }
+            }
+            if (best != null) {
+                setControlVisibility(best, View.GONE);
+            }
+        }
+        // 头像：评论项内第一个图片控件（通常为圆形头像）
+        if (hideAvatar && !imageViews.isEmpty()) {
+            setControlVisibility(imageViews.get(0), View.GONE);
+        }
+    }
+
+    /** 是否属地文本：来自xx / IP属地 / 含"·"的位置后缀（如"来自 广东"）。 */
+    private static boolean isLocationText(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        String t = text.trim();
+        return t.contains("来自") || t.contains("IP属地")
+                || t.contains("属地") || t.startsWith("·");
+    }
+
+    private static void setControlVisibility(View view, int visibility) {
+        if (view != null && view.getVisibility() != visibility) {
+            view.setVisibility(visibility);
+        }
+    }
+
+    private static void collectTextViews(View view, List<View> out) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof TextView) {
+            out.add(view);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectTextViews(group.getChildAt(i), out);
+            }
+        }
+    }
+
+    private static void collectImageViews(View view, List<View> out) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof ImageView) {
+            out.add(view);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectImageViews(group.getChildAt(i), out);
+            }
+        }
     }
 
     /** 递归设置评论项内所有文字控件的颜色 */
@@ -376,6 +1018,209 @@ final class CommentEnhancer {
             for (int i = 0; i < group.getChildCount(); i++) {
                 resetShift(group.getChildAt(i));
             }
+        }
+    }
+
+    /** 评论项长按菜单（抖X comments.cc7c36fa92）。
+     *  长按评论项弹出操作菜单：复制评论文字 / 复制评论链接 / 屏蔽该用户 / 复制昵称。 */
+    private static final int COMMENT_MENU_TAG_KEY = 0x2d0a5e03;
+
+    private static void installCommentLongClickMenu(View panel) {
+        if (panel == null
+                || !bool(CommentPrefs.KEY_COMMENTS_CC7C36FA92, false)) {
+            return;
+        }
+        View rv = findRecyclerView(panel);
+        if (!(rv instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) rv;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            final View child = group.getChildAt(i);
+            if (child == null || child.getTag(COMMENT_MENU_TAG_KEY) != null) {
+                continue;
+            }
+            child.setTag(COMMENT_MENU_TAG_KEY, Boolean.TRUE);
+            child.setOnLongClickListener(v -> {
+                showCommentMenu(child);
+                return true;
+            });
+        }
+    }
+
+    private static void showCommentMenu(final View commentView) {
+        Activity activity = currentActivity == null ? null : currentActivity.get();
+        if (activity == null || commentView == null) {
+            return;
+        }
+        final String text = findCommentText(commentView);
+        final String nickname = findNicknameText(commentView);
+        final List<String> menu = new ArrayList<>();
+        if (text.length() > 0) {
+            menu.add("复制评论");
+        }
+        if (nickname.length() > 0) {
+            menu.add("复制昵称");
+        }
+        menu.add("屏蔽该用户");
+        menu.add("复制评论链接");
+        final String[] items = menu.toArray(new String[0]);
+        new AlertDialog.Builder(activity)
+                .setTitle("评论操作")
+                .setItems(items, (d, which) -> {
+                    String chosen = items[which];
+                    if ("复制评论".equals(chosen)) {
+                        copyText(activity, text);
+                        toast(activity, "评论已复制");
+                    } else if ("复制昵称".equals(chosen)) {
+                        copyText(activity, nickname);
+                        toast(activity, "昵称已复制");
+                    } else if ("屏蔽该用户".equals(chosen)) {
+                        blockCommentUser(nickname);
+                        toast(activity, "已屏蔽该用户");
+                    } else if ("复制评论链接".equals(chosen)) {
+                        copyText(activity, buildCommentLink(commentView));
+                        toast(activity, "链接已复制");
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 找评论项中的正文文本：取宽度最大的 TextView。 */
+    private static String findCommentText(View view) {
+        if (view == null) {
+            return "";
+        }
+        if (view instanceof TextView) {
+            CharSequence cs = ((TextView) view).getText();
+            return cs == null ? "" : cs.toString().trim();
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            String best = "";
+            int bestWidth = -1;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                String s = findCommentText(group.getChildAt(i));
+                if (s.length() > 0 && group.getChildAt(i).getWidth() > bestWidth) {
+                    best = s;
+                    bestWidth = group.getChildAt(i).getWidth();
+                }
+            }
+            return best;
+        }
+        return "";
+    }
+
+    /** 找评论项中的昵称：第一个短文本 TextView（通常位于评论正文上方/左侧）。 */
+    private static String findNicknameText(View view) {
+        if (view == null) {
+            return "";
+        }
+        if (view instanceof TextView) {
+            CharSequence cs = ((TextView) view).getText();
+            String s = cs == null ? "" : cs.toString().trim();
+            if (s.length() > 0 && s.length() <= 32
+                    && view.getHeight() > 0 && view.getHeight() < 200) {
+                return s;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                String s = findNicknameText(group.getChildAt(i));
+                if (s.length() > 0) {
+                    return s;
+                }
+            }
+        }
+        return "";
+    }
+
+    /** 屏蔽用户：把昵称追加到评论屏蔽列表（逗号分隔）。 */
+    private static void blockCommentUser(String nickname) {
+        if (prefs == null || nickname == null || nickname.length() == 0) {
+            return;
+        }
+        String existing = prefs.getString(
+                CommentPrefs.KEY_COMMENT_FILTER_C28BBE3819, "");
+        if (existing != null && existing.contains(nickname)) {
+            return;
+        }
+        String merged = existing == null || existing.trim().length() == 0
+                ? nickname : existing + "," + nickname;
+        prefs.edit().putString(
+                CommentPrefs.KEY_COMMENT_FILTER_C28BBE3819, merged).apply();
+    }
+
+    /** 构造评论链接：从 ViewHolder 的 Comment 反射取 awemeId/cid。 */
+    private static String buildCommentLink(View child) {
+        try {
+            Object comment = getCommentFromHolder(child);
+            if (comment != null) {
+                String aid = callCommentGetter(comment, "getAwemeId");
+                String cid = callCommentGetter(comment, "getCid");
+                if (aid.length() > 0) {
+                    return "https://www.douyin.com/video/" + aid
+                            + (cid.length() > 0 ? "?comment_id=" + cid : "");
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return "https://www.douyin.com/";
+    }
+
+    private static Object getCommentFromHolder(View child) {
+        View rv = child;
+        while (rv != null) {
+            if (rv.getClass().getName().contains("RecyclerView")) {
+                break;
+            }
+            rv = rv.getParent() instanceof View
+                    ? (View) rv.getParent() : null;
+        }
+        if (rv == null) {
+            return null;
+        }
+        try {
+            Method m = rv.getClass()
+                    .getMethod("getChildViewHolder", View.class);
+            Object holder = m.invoke(rv, child);
+            if (holder == null) {
+                return null;
+            }
+            Method getComment = holder.getClass().getMethod("getComment");
+            return getComment.invoke(holder);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static String callCommentGetter(Object comment, String name) {
+        try {
+            Method m = comment.getClass().getMethod(name);
+            Object v = m.invoke(comment);
+            return v == null ? "" : String.valueOf(v);
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static void copyText(Activity activity, String text) {
+        if (text == null || text.length() == 0) {
+            return;
+        }
+        ClipboardManager cm = (ClipboardManager) activity
+                .getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm != null) {
+            cm.setPrimaryClip(ClipData.newPlainText("douyin_comment", text));
+        }
+    }
+
+    private static void toast(Activity activity, String message) {
+        try {
+            Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+        } catch (Throwable ignored) {
         }
     }
 

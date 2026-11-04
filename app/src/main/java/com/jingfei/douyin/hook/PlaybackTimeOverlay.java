@@ -27,6 +27,10 @@ final class PlaybackTimeOverlay {
     private static volatile int opacityPercent = 80;
     private static volatile int marginDp = 12;
     private static volatile int bottomDp = 48;
+    /** 播放器诊断信息（抖X quality.dd11313c92）：在时间上叠加分辨率。 */
+    private static volatile boolean diagnosticsEnabled;
+    private static Method widthMethod;
+    private static Method heightMethod;
 
     private static WeakReference<TextView> overlayRef;
     private static Context appContext;
@@ -34,6 +38,15 @@ final class PlaybackTimeOverlay {
     private static Method durationMethod;
 
     private PlaybackTimeOverlay() {
+    }
+
+    /** 设置播放器诊断信息开关（抖X quality.dd11313c92）。 */
+    static void setDiagnosticsEnabled(boolean en) {
+        diagnosticsEnabled = en;
+        if (!en) {
+            widthMethod = null;
+            heightMethod = null;
+        }
     }
 
     /** 由 PlaybackStrategy 注入样式参数；enabled=false 时移除叠加层。 */
@@ -89,7 +102,15 @@ final class PlaybackTimeOverlay {
             if (dur < 0) {
                 dur = 0;
             }
-            tv.setText(format(pos) + (dur > 0 ? " / " + format(dur) : ""));
+            String text = format(pos) + (dur > 0 ? " / " + format(dur) : "");
+            if (diagnosticsEnabled) {
+                long width = invokeLong(player, "getVideoWidth", widthMethod);
+                long height = invokeLong(player, "getVideoHeight", heightMethod);
+                if (width > 0 && height > 0) {
+                    text += "  " + width + "x" + height;
+                }
+            }
+            tv.setText(text);
         } catch (Throwable ignored) {
             // 视图树变化或播放器接口差异时跳过
         }
@@ -150,6 +171,10 @@ final class PlaybackTimeOverlay {
                     currentPositionMethod = m;
                 } else if ("getDuration".equals(name)) {
                     durationMethod = m;
+                } else if ("getVideoWidth".equals(name)) {
+                    widthMethod = m;
+                } else if ("getVideoHeight".equals(name)) {
+                    heightMethod = m;
                 }
             }
             Object r = m.invoke(target);

@@ -49,6 +49,8 @@ final class PurifyEnhancer {
             FeedContentTracker.setTextRegex(null);
             FeedContentTracker.setAuthorFilters(null, null);
             FeedContentTracker.applyPurifyOverride(null);
+            ImmersiveUi.setAutoSkipAd(false);
+            ImmersiveUi.setFeedScopeRecommendOnly(false);
             return;
         }
         boolean skipAds =
@@ -84,6 +86,13 @@ final class PurifyEnhancer {
         FeedContentTracker.setAuthorFilters(blockedAuthors, whitelistAuthors);
         FeedContentTracker.applyPurifyOverride(
                 new FilterPreferences.Values(skipAds, false, false, false, keywords));
+        // 仅过滤推荐流（feed_filter.scope）
+        ImmersiveUi.setFeedScopeRecommendOnly(PurifyPrefs.getBoolean(
+                prefs, PurifyPrefs.KEY_FEED_FILTER_SCOPE, false));
+        // 自动点击广告跳过/解锁按钮（抖X skipad / playlet_ad / miniapp）
+        boolean miniapp = PurifyPrefs.getBoolean(
+                prefs, PurifyPrefs.KEY_MINIAPP, false);
+        ImmersiveUi.setAutoSkipAd(skipAds || miniapp);
     }
 
     static boolean bool(String key, boolean def) {

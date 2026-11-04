@@ -101,8 +101,44 @@ public final class AppearancePrefs {
     /** 视频右侧栏样式（style__right） */
     public static final String KEY_STYLE_RIGHT = "style__right";
 
+    /** 视频右侧栏 · 透明度（style__right.23） */
+    public static final String KEY_STYLE_RIGHT_OPACITY = "style__right.23";
+
+    /** 视频右侧栏 · 暂停透明度（style__right.24） */
+    public static final String KEY_STYLE_RIGHT_PAUSED_OPACITY = "style__right.24";
+
+    /** 视频右侧栏 · 暂停时使用独立透明度（style__right.25） */
+    public static final String KEY_STYLE_RIGHT_PAUSED_SEPARATE = "style__right.25";
+
+    /** 视频右侧栏 · 左右移动 dp（style__right.26） */
+    public static final String KEY_STYLE_RIGHT_DX = "style__right.26";
+
+    /** 视频右侧栏 · 上下移动 dp（style__right.27） */
+    public static final String KEY_STYLE_RIGHT_DY = "style__right.27";
+
+    /** 视频右侧栏 · 缩放 0.1–3 倍（style__right.28） */
+    public static final String KEY_STYLE_RIGHT_SCALE = "style__right.28";
+
     /** 视频背景（background_video） */
     public static final String KEY_BACKGROUND_VIDEO = "background_video";
+
+    /** 视频背景 · 启用视频背景（background_video.52） */
+    public static final String KEY_BACKGROUND_VIDEO_ENABLE = "background_video.52";
+
+    /** 视频背景 · 背景颜色（background_video.53，#RRGGBB / #AARRGGBB） */
+    public static final String KEY_BACKGROUND_VIDEO_COLOR = "background_video.53";
+
+    /** 图文背景 · 启用（background_photo.59） */
+    public static final String KEY_BACKGROUND_PHOTO_ENABLE = "background_photo.59";
+
+    /** 图文背景 · 背景颜色（background_photo.60，#RRGGBB / #AARRGGBB） */
+    public static final String KEY_BACKGROUND_PHOTO_COLOR = "background_photo.60";
+
+    /** 实况背景 · 启用（background_livephoto.66） */
+    public static final String KEY_BACKGROUND_LIVEPHOTO_ENABLE = "background_livephoto.66";
+
+    /** 实况背景 · 背景颜色（background_livephoto.67，#RRGGBB / #AARRGGBB） */
+    public static final String KEY_BACKGROUND_LIVEPHOTO_COLOR = "background_livephoto.67";
 
     /** 图文背景（background_photo） */
     public static final String KEY_BACKGROUND_PHOTO = "background_photo";

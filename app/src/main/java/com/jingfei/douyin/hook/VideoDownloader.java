@@ -4,6 +4,7 @@ import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.NotificationManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -103,6 +104,20 @@ final class VideoDownloader {
     }
 
     private static boolean confirmFileNameBeforeSave;
+
+    /** 由 DownloadExt 注入抖X“抖音通知权限检查”（download_interaction.b3668c01d7）设置。 */
+    static void setCheckNotificationPermission(boolean check) {
+        checkNotificationPermission = check;
+    }
+
+    private static boolean checkNotificationPermission;
+
+    /** 由 DownloadExt 注入抖X“视频格式”（download.e4e86807ea）：mp4/m3u8/flv 等。 */
+    static void setPreferredFormat(String format) {
+        preferredFormat = format;
+    }
+
+    private static String preferredFormat;
 
     /** 拼出 MediaStore RELATIVE_PATH；开启“系统相册”时按 MIME 落到相册/音乐目录。 */
     private static String downloadRelativePath(String mimeType) {
@@ -304,6 +319,15 @@ final class VideoDownloader {
         if (!ACTIVE.add(key)) {
             showToast(activity, "当前" + kind.label + "正在下载");
             return;
+        }
+        // 抖X“抖音通知权限”（download_interaction.b3668c01d7）：开启且显示下载通知时，
+        // 若系统通知权限未开则提示，避免用户以为下载没完成。
+        if (checkNotificationPermission && showDownloadNotification) {
+            NotificationManager nm = (NotificationManager) activity.getSystemService(
+                    Context.NOTIFICATION_SERVICE);
+            if (nm != null && !nm.areNotificationsEnabled()) {
+                showToast(activity, "通知权限未开启，可能看不到下载完成通知");
+            }
         }
 
         showToast(activity, kind.startMessage);
@@ -553,6 +577,31 @@ final class VideoDownloader {
         }
     }
 
+    /** 按抖X“视频格式”（download.e4e86807ea）把匹配格式的候选 URL 排到前面。 */
+    private static List<FeedContentTracker.PlayUrl> orderedAttempts(
+            List<FeedContentTracker.PlayUrl> original) {
+        if (original == null || original.isEmpty()) {
+            return new ArrayList<>();
+        }
+        if (preferredFormat == null || preferredFormat.isEmpty()) {
+            return new ArrayList<>(original);
+        }
+        String fmt = preferredFormat.toLowerCase(Locale.ROOT);
+        List<FeedContentTracker.PlayUrl> matched = new ArrayList<>();
+        List<FeedContentTracker.PlayUrl> rest = new ArrayList<>();
+        for (FeedContentTracker.PlayUrl u : original) {
+            String url = u.url == null ? "" : u.url.toLowerCase(Locale.ROOT);
+            if (url.contains("." + fmt) || url.contains("/" + fmt)
+                    || url.contains("format=" + fmt)) {
+                matched.add(u);
+            } else {
+                rest.add(u);
+            }
+        }
+        matched.addAll(rest);
+        return matched;
+    }
+
     @TargetApi(Build.VERSION_CODES.Q)
     private static DownloadResult downloadWithMediaStore(
             Context context,
@@ -562,7 +611,7 @@ final class VideoDownloader {
     ) {
         ContentResolver resolver = context.getContentResolver();
         Throwable lastError = null;
-        List<FeedContentTracker.PlayUrl> attempts = new ArrayList<>(snapshot.playUrls);
+        List<FeedContentTracker.PlayUrl> attempts = orderedAttempts(snapshot.playUrls);
         boolean refreshed = false;
         for (int index = 0; index < attempts.size(); index++) {
             FeedContentTracker.PlayUrl candidate = attempts.get(index);
@@ -667,7 +716,11 @@ final class VideoDownloader {
         if (manager == null) {
             return DownloadResult.failed("系统下载服务不可用");
         }
-        FeedContentTracker.PlayUrl candidate = snapshot.playUrls.get(0);
+        List<FeedContentTracker.PlayUrl> ordered = orderedAttempts(snapshot.playUrls);
+        if (ordered.isEmpty()) {
+            return DownloadResult.failed("无可下载的视频地址");
+        }
+        FeedContentTracker.PlayUrl candidate = ordered.get(0);
         DownloadManager.Request request =
                 new DownloadManager.Request(Uri.parse(candidate.url));
         request.setTitle("抖音无水印视频");

@@ -164,6 +164,33 @@ public final class CommentPrefs {
     /** 背景透明度（comment_appearance.9eaa61edf0） */
     public static final String KEY_COMMENT_APPEARANCE_9EAA61EDF0 = "comment_appearance.9eaa61edf0";
 
+    /** 隐藏评论头像（comment.control.avatar） */
+    public static final String KEY_COMMENT_CONTROL_AVATAR = "comment.control.avatar";
+
+    /** 隐藏评论昵称（comment.control.nickname） */
+    public static final String KEY_COMMENT_CONTROL_NICKNAME = "comment.control.nickname";
+
+    /** 隐藏评论正文（comment.control.text） */
+    public static final String KEY_COMMENT_CONTROL_TEXT = "comment.control.text";
+
+    /** 隐藏评论时间（comment.control.time） */
+    public static final String KEY_COMMENT_CONTROL_TIME = "comment.control.time";
+
+    /** 隐藏评论 IP 属地（comment.control.ip） */
+    public static final String KEY_COMMENT_CONTROL_IP = "comment.control.ip";
+
+    /** 隐藏评论分割线（comment.control.divider） */
+    public static final String KEY_COMMENT_CONTROL_DIVIDER = "comment.control.divider";
+
+    /** 隐藏评论标题竖线（comment.control.title_separator） */
+    public static final String KEY_COMMENT_CONTROL_TITLE_SEPARATOR = "comment.control.title_separator";
+
+    /** 评论面板透明度（comment.control.panel_opacity） */
+    public static final String KEY_COMMENT_CONTROL_PANEL_OPACITY = "comment.control.panel_opacity";
+
+    /** 隐藏评论水印（comment.control.watermark） */
+    public static final String KEY_COMMENT_CONTROL_WATERMARK = "comment.control.watermark";
+
     private CommentPrefs() {
     }
 

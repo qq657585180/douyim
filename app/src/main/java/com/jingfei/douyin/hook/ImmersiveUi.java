@@ -11,6 +11,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.Choreographer;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.TextureView;
@@ -69,6 +70,8 @@ final class ImmersiveUi {
     private static volatile boolean hideNavBar;
     // 隐藏整个首页底栏（home.bottom_hidden）
     private static volatile boolean hideHomeBottomBar;
+    // 隐藏底栏时保留占位（home.bottom_keep_space）
+    private static volatile boolean keepHomeBottomBarSpace;
     // 清爽模式：隐藏非视频悬浮控件（controls.d4f77759dc）
     private static volatile boolean cleanMode;
     // 隐藏广告卡片（controls.ad_card）
@@ -130,8 +133,55 @@ final class ImmersiveUi {
     private static volatile boolean hideProgressEnabled;
     /** 隐藏首页搜索入口（抖X home.d23c896621）。 */
     private static volatile boolean hideHomeSearch;
+
+    // 仅过滤推荐流（抖X feed_filter.scope）
+    private static boolean feedScopeRecommendOnly;
+    /** 隐藏消息角标（抖X home.3fe35ca5c8）。 */
+    private static volatile boolean hideMessageBadge;
+    /** 隐藏首页底栏皮肤（抖X home.ba08b02cee）。 */
+    private static volatile boolean hideBottomBarSkin;
+    /** 首页按钮刷新前确认（抖X home.6f099dad58）。 */
+    private static volatile boolean refreshConfirmEnabled;
+    /** 音乐封面随右侧栏移动（抖X controls.a98f8afb28）。 */
+    private static volatile boolean musicDiscDragEnabled;
+    /** 底栏账号头像（抖X glass.avatar）。 */
+    private static volatile boolean glassAvatarEnabled;
+    /** 顶栏双列浏览入口（抖X glass.double）。 */
+    private static volatile boolean glassDoubleEnabled;
+    /** 顶栏实时帧率（抖X glass.fps）。 */
+    private static volatile boolean glassFpsEnabled;
+
+    // 视频右侧栏样式（抖X style__right.*）：透明度/暂停透明度/独立暂停透明度/位移/缩放
+    private static int rightBarOpacity = 100;
+    private static int rightBarPausedOpacity = 100;
+    private static boolean rightBarPausedSeparate;
+    private static int rightBarDx;
+    private static int rightBarDy;
+    private static float rightBarScale = 1.0f;
+    private static float dragDx;
+    private static float dragDy;
     /** 透明系统导航栏（抖X home.9902412e18）。 */
     private static volatile boolean transparentNavBar;
+    /** 自动点击广告跳过/解锁按钮（抖X skipad / playlet_ad / miniapp）。 */
+    private static volatile boolean autoSkipAd;
+    /** 自动跳过章节广告（抖X extras.d2a3ea57f1）。 */
+    private static volatile boolean autoSkipChapterAd;
+    private static long lastAdSkipAt;
+    /** 视频背景颜色（抖X background_video.52/.53）。 */
+    private static volatile String videoBackgroundColor;
+    private static volatile String lastAppliedVideoBackground;
+    /** 图文背景颜色（抖X background_photo.59/.60）。 */
+    private static volatile String photoBackgroundColor;
+    /** 实况背景颜色（抖X background_livephoto.66/.67）。 */
+    private static volatile String livePhotoBackgroundColor;
+    /** 常驻进度条（抖X progress.20ee30e2ae）：进度条不自动隐藏。 */
+    private static volatile boolean keepProgressVisible;
+    /** 长按临时倍速（抖X gestures.be54e501cb）。 */
+    private static volatile boolean tempSpeedEnabled;
+    private static final android.os.Handler TEMP_SPEED_HANDLER =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final Runnable TEMP_SPEED_ACTIVATE =
+            () -> PlayerHooks.setTemporarySpeedActive(true);
 
     private ImmersiveUi() {
     }
@@ -348,9 +398,113 @@ final class ImmersiveUi {
         hideHomeSearch = enabled;
     }
 
+    /** 仅过滤推荐流开关（抖X feed_filter.scope）。 */
+    static void setFeedScopeRecommendOnly(boolean enabled) {
+        feedScopeRecommendOnly = enabled;
+    }
+
+    /** 抖X home.3fe35ca5c8：隐藏首页消息角标。 */
+    static void setHideMessageBadge(boolean enabled) {
+        hideMessageBadge = enabled;
+    }
+
+    /** 抖X home.ba08b02cee：隐藏首页底栏皮肤。 */
+    static void setHideBottomBarSkin(boolean enabled) {
+        hideBottomBarSkin = enabled;
+    }
+
+    /** 抖X home.6f099dad58：首页按钮刷新前确认。 */
+    static void setRefreshConfirmEnabled(boolean enabled) {
+        refreshConfirmEnabled = enabled;
+    }
+
+    /** 抖X controls.a98f8afb28：音乐封面随右侧栏移动。 */
+    /** 底栏账号头像（glass.avatar）开关。 */
+    static void setGlassAvatarEnabled(boolean enabled) {
+        if (glassAvatarEnabled == enabled) {
+            return;
+        }
+        glassAvatarEnabled = enabled;
+        if (!enabled) {
+            removeAvatarOverlay();
+        }
+    }
+
+    /** 顶栏双列浏览入口（glass.double）开关。 */
+    static void setGlassDoubleEnabled(boolean enabled) {
+        if (glassDoubleEnabled == enabled) {
+            return;
+        }
+        glassDoubleEnabled = enabled;
+        if (!enabled) {
+            removeDoubleOverlay();
+        }
+    }
+
+    /** 顶栏实时帧率（glass.fps）开关。 */
+    static void setGlassFpsEnabled(boolean enabled) {
+        if (glassFpsEnabled == enabled) {
+            return;
+        }
+        glassFpsEnabled = enabled;
+        if (!enabled) {
+            removeFpsOverlay();
+        }
+    }
+
+    static void setMusicDiscDragEnabled(boolean enabled) {
+        musicDiscDragEnabled = enabled;
+    }
+
+    /** 抖X style__right：视频右侧栏样式（透明度/暂停透明度/独立暂停透明度/位移/缩放）。 */
+    static void setRightBarStyle(int opacity, int pausedOpacity, boolean pausedSeparate,
+                                 int dx, int dy, float scale) {
+        rightBarOpacity = opacity;
+        rightBarPausedOpacity = pausedOpacity;
+        rightBarPausedSeparate = pausedSeparate;
+        rightBarDx = dx;
+        rightBarDy = dy;
+        rightBarScale = scale;
+    }
+
     /** 抖X home.9902412e18：透明系统导航栏。 */
     static void setTransparentNavBar(boolean enabled) {
         transparentNavBar = enabled;
+    }
+
+    /** 由 PurifyEnhancer 注入抖X广告跳过开关（skipad / playlet_ad / miniapp）。 */
+    static void setAutoSkipAd(boolean enabled) {
+        autoSkipAd = enabled;
+    }
+
+    /** 抖X extras.d2a3ea57f1：自动跳过章节广告（独立于净化组广告开关）。 */
+    static void setAutoSkipChapterAd(boolean enabled) {
+        autoSkipChapterAd = enabled;
+    }
+
+    /** 抖X background_video.53：视频背景颜色（#RRGGBB / #AARRGGBB，null 恢复默认）。 */
+    static void setVideoBackgroundColor(String color) {
+        videoBackgroundColor = color;
+    }
+
+    /** 抖X background_photo.60：图文背景颜色（null 恢复默认）。 */
+    static void setPhotoBackgroundColor(String color) {
+        photoBackgroundColor = color;
+    }
+
+    /** 抖X background_livephoto.67：实况背景颜色（null 恢复默认）。 */
+    static void setLivePhotoBackgroundColor(String color) {
+        livePhotoBackgroundColor = color;
+    }
+
+    /** 抖X progress.20ee30e2ae：常驻进度条。 */
+    static void setKeepProgressVisible(boolean enabled) {
+        keepProgressVisible = enabled;
+    }
+
+    /** 抖X gestures.be54e501cb：长按临时倍速开关。 */
+    static void setTempSpeedEnabled(boolean enabled) {
+        tempSpeedEnabled = enabled;
     }
 
     /** 由 ThemeManager 注入抖X外观覆盖（douyin_appearance）。null 表示不覆盖该字段。 */
@@ -383,6 +537,11 @@ final class ImmersiveUi {
         appearanceHideAdCard = hideAdCard;
         appearanceHideAuthorNotice = hideAuthorNotice;
         applyAppearanceOverridesToFields();
+    }
+
+    /** 隐藏底栏时是否保留占位（home.bottom_keep_space）。 */
+    static void setHomeBottomBarKeepSpace(boolean keep) {
+        keepHomeBottomBarSpace = keep;
     }
 
     /** 沉浸模式是否应激活：原生沉浸开关或任一抖X外观隐藏项开启。 */
@@ -491,6 +650,12 @@ final class ImmersiveUi {
         }
     }
 
+    /** 取消长按临时倍速：移除定时器并恢复原速。 */
+    private static void cancelTempSpeed() {
+        TEMP_SPEED_HANDLER.removeCallbacks(TEMP_SPEED_ACTIVATE);
+        PlayerHooks.setTemporarySpeedActive(false);
+    }
+
     static void onActivityTouch(Activity activity, MotionEvent event) {
         if (!moduleEnabled) return;
         int action = event.getActionMasked();
@@ -517,16 +682,23 @@ final class ImmersiveUi {
                     : touchDownObservedAid;
             touchDownEngine = PlaybackState.engine();
             touchDownEngineState = PlaybackState.engineState(touchDownEngine);
+            // 长按临时倍速（抖X gestures.be54e501cb）
+            if (tempSpeedEnabled) {
+                TEMP_SPEED_HANDLER.removeCallbacks(TEMP_SPEED_ACTIVATE);
+                TEMP_SPEED_HANDLER.postDelayed(TEMP_SPEED_ACTIVATE, 500L);
+            }
             return;
         }
         if (action == MotionEvent.ACTION_CANCEL) {
             touchInProgress = false;
+            cancelTempSpeed();
             return;
         }
         if (action != MotionEvent.ACTION_UP) {
             return;
         }
         touchInProgress = false;
+        cancelTempSpeed();
         long gestureId = event.getDownTime();
         if (gestureId == lastHandledTouchDownTime) {
             return;
@@ -769,6 +941,9 @@ final class ImmersiveUi {
             removeDownloadButton();
             restoreAll(activity, decor);
             PlaybackTimeOverlay.remove();
+            removeFpsOverlay();
+            removeAvatarOverlay();
+            removeDoubleOverlay();
             scheduleScan(500L);
             return;
         }
@@ -792,9 +967,67 @@ final class ImmersiveUi {
         if (hideProgressEnabled) {
             hideProgressBars(decor);
         }
+        // 常驻进度条（抖X progress.20ee30e2ae）：强制保持可见
+        if (keepProgressVisible) {
+            keepProgressBarsVisible(decor);
+        }
         // 隐藏首页搜索入口（抖X home.d23c896621）
         if (hideHomeSearch) {
             hideByText(decor, "搜索", 2, true);
+        }
+        // 隐藏首页消息角标（抖X home.3fe35ca5c8）
+        if (hideMessageBadge) {
+            hideMessageBadge(decor);
+        }
+        // 隐藏首页底栏皮肤（抖X home.ba08b02cee）
+        if (hideBottomBarSkin) {
+            hideBottomBarSkin(decor);
+        }
+        // 隐藏整个首页底栏（抖X home.bottom_hidden）
+        if (hideHomeBottomBar) {
+            hideHomeBottomTabBar(decor);
+        }
+        // 首页底栏液态玻璃（抖X glass.bottom）：对底栏容器应用半透明+模糊
+        GlassUi.applyBottomGlass(findHomeTabBar(decor));
+        // 顶部导航液态玻璃（抖X glass.top）
+        GlassUi.applyTopGlass(findTopTabBar(decor));
+        // 视频右侧栏液态玻璃（抖X glass.right）
+        GlassUi.applyRightGlass(findRightBar(decor));
+        // 顶栏实时帧率（抖X glass.fps）
+        if (glassFpsEnabled) {
+            updateFpsOverlay(decor);
+        }
+        // 底栏账号头像（抖X glass.avatar）
+        if (glassAvatarEnabled) {
+            updateAvatarOverlay(decor);
+        }
+        // 顶栏双列浏览入口（抖X glass.double）
+        if (glassDoubleEnabled) {
+            updateDoubleOverlay(decor);
+        }
+        // 首页按钮刷新前确认（抖X home.6f099dad58）
+        if (refreshConfirmEnabled) {
+            installRefreshConfirm(decor);
+        }
+        // 音乐封面随右侧栏移动（抖X controls.a98f8afb28）
+        if (musicDiscDragEnabled) {
+            enableMusicDiscDrag(decor);
+        }
+        // 视频右侧栏样式（抖X style__right）
+        applyRightBarStyle(decor);
+        // 自动点击广告跳过/解锁按钮（抖X skipad / playlet_ad / miniapp）
+        autoSkipAd(decor);
+
+        // 视频背景颜色（抖X background_video.52/.53）
+        if (videoBackgroundColor != null && !videoBackgroundColor.isEmpty()
+                && !videoBackgroundColor.equals(lastAppliedVideoBackground)) {
+            applyVideoBackground(decor);
+            lastAppliedVideoBackground = videoBackgroundColor;
+        }
+        // 图文/实况背景颜色（抖X background_photo.59/.60、background_livephoto.66/.67）
+        if ((photoBackgroundColor != null && !photoBackgroundColor.isEmpty())
+                || (livePhotoBackgroundColor != null && !livePhotoBackgroundColor.isEmpty())) {
+            applyMediaBackgrounds(decor);
         }
 
         if (PlaybackState.consumePlaybackError()) {
@@ -814,7 +1047,9 @@ final class ImmersiveUi {
             return;
         }
 
-        if (checkCurrentFeedContent(decor)) {
+        // 仅过滤推荐流（feed_filter.scope）：开启时非推荐 Tab 不过滤
+        boolean feedScopeOk = !feedScopeRecommendOnly || isRecommendTab(decor);
+        if (feedScopeOk && checkCurrentFeedContent(decor)) {
             scheduleNextScan();
             return;
         }
@@ -1670,6 +1905,206 @@ final class ImmersiveUi {
         }
     }
 
+    /** 常驻进度条：把进度条强制设为可见（抖X progress.20ee30e2ae）。 */
+    private static void keepProgressBarsVisible(View root) {
+        if (root == null) {
+            return;
+        }
+        keepProgressBarsRecursive(root);
+    }
+
+    private static void keepProgressBarsRecursive(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof android.widget.SeekBar) {
+            view.setVisibility(View.VISIBLE);
+        } else {
+            String cls = view.getClass().getName().toLowerCase();
+            if (cls.contains("seekbar")
+                    || (cls.contains("progressbar") && !cls.contains("loading"))) {
+                view.setVisibility(View.VISIBLE);
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                keepProgressBarsRecursive(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 自动点击短剧/小游戏广告的"跳过/解锁/领奖"按钮（抖X skipad / playlet_ad / miniapp / extras.d2a3ea57f1）。 */
+    private static void autoSkipAd(View decor) {
+        if (decor == null || (!autoSkipAd && !autoSkipChapterAd)) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (now - lastAdSkipAt < 3_000L) {
+            return;
+        }
+        View button = findAdSkipButton(decor);
+        if (button != null && button.isShown()) {
+            lastAdSkipAt = now;
+            try {
+                button.performClick();
+            } catch (Throwable ignored) {
+                // 点击失败不影响主流程
+            }
+        }
+    }
+
+    /** 将播放器容器背景设为指定颜色，模拟"视频背景"。 */
+    private static void applyVideoBackground(View root) {
+        View container = findVideoContainer(root);
+        if (container == null) {
+            return;
+        }
+        try {
+            int color = android.graphics.Color.parseColor(videoBackgroundColor);
+            container.setBackgroundColor(color);
+        } catch (IllegalArgumentException ignored) {
+            // 非法颜色串忽略
+        }
+    }
+
+    /** 查找视频播放器视图（VideoView/TextureView/SurfaceView），返回其父容器。 */
+    private static View findVideoContainer(View view) {
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                String name = child.getClass().getName().toLowerCase();
+                if (name.contains("videoview") || name.contains("textureview")
+                        || name.contains("surfaceview")) {
+                    return group;
+                }
+                View found = findVideoContainer(child);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 图文/实况背景：分别对图片容器与视频容器设置背景色。 */
+    private static void applyMediaBackgrounds(View root) {
+        if (photoBackgroundColor != null && !photoBackgroundColor.isEmpty()) {
+            View container = findImageContainer(root);
+            if (container != null) {
+                try {
+                    container.setBackgroundColor(
+                            android.graphics.Color.parseColor(photoBackgroundColor));
+                } catch (IllegalArgumentException ignored) {
+                    // 非法颜色串忽略
+                }
+            }
+        }
+        if (livePhotoBackgroundColor != null && !livePhotoBackgroundColor.isEmpty()) {
+            View container = findVideoContainer(root);
+            if (container != null) {
+                try {
+                    container.setBackgroundColor(
+                            android.graphics.Color.parseColor(livePhotoBackgroundColor));
+                } catch (IllegalArgumentException ignored) {
+                    // 非法颜色串忽略
+                }
+            }
+        }
+    }
+
+    /** 查找图文容器（ViewPager/图片轮播/大图 ImageView），返回其父容器。 */
+    private static View findImageContainer(View view) {
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                String name = child.getClass().getName().toLowerCase();
+                if (name.contains("viewpager") || name.contains("photoview")
+                        || name.contains("imagerview") || name.contains("gallery")) {
+                    return group;
+                }
+                if (child instanceof android.widget.ImageView) {
+                    int width = child.getWidth();
+                    if (width > 0 && width
+                            > child.getResources().getDisplayMetrics().widthPixels / 2) {
+                        return group;
+                    }
+                }
+                View found = findImageContainer(child);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 递归查找广告"跳过/解锁/领奖"文本，向上找可点击容器。 */
+    private static View findAdSkipButton(View view) {
+        if (view instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) view).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            if (text.contains("跳过") || text.contains("看广告解锁")
+                    || text.contains("立即解锁") || text.contains("继续观看")
+                    || text.contains("领取奖励") || text.contains("免费领取")) {
+                View cur = view;
+                for (int i = 0; i < 4 && cur != null; i++) {
+                    if (cur.isClickable()) {
+                        return cur;
+                    }
+                    if (cur.getParent() instanceof ViewGroup) {
+                        cur = (ViewGroup) cur.getParent();
+                    } else {
+                        break;
+                    }
+                }
+                return view;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findAdSkipButton(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 判断当前是否推荐流 Tab：找到文本为"推荐"的 TextView 且其可点击容器处于选中态。 */
+    private static boolean isRecommendTab(View root) {
+        if (root instanceof TextView) {
+            CharSequence cs = ((TextView) root).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            if ("推荐".equals(text)) {
+                View cur = root;
+                for (int i = 0; i < 5 && cur != null; i++) {
+                    if (cur.isSelected()) {
+                        return true;
+                    }
+                    if (cur.getParent() instanceof ViewGroup) {
+                        cur = (ViewGroup) cur.getParent();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (isRecommendTab(group.getChildAt(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** 按文本隐藏视图：找到文本命中项后向上提升 levels 层隐藏容器。 */
     private static boolean hideByText(View root, String target, int levels, boolean contains) {
         if (root instanceof android.widget.TextView) {
@@ -1701,6 +2136,576 @@ final class ImmersiveUi {
         }
         return false;
     }
+
+    /** 隐藏首页消息角标（抖X home.3fe35ca5c8）：找到底栏"消息"标签并隐藏其数字/红点角标。 */
+    private static void hideMessageBadge(View root) {
+        if (root instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) root).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            if ("消息".equals(text) || text.contains("消息")) {
+                View cur = root;
+                for (int i = 0; i < 3 && cur.getParent() instanceof ViewGroup; i++) {
+                    ViewGroup parent = (ViewGroup) cur.getParent();
+                    if (parent == null) {
+                        return;
+                    }
+                    cur = parent;
+                    if (hideBadgeInContainer(cur)) {
+                        return;
+                    }
+                }
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                hideMessageBadge(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 在容器内查找并隐藏消息角标（数字角标或红色圆点）。 */
+    private static boolean hideBadgeInContainer(View container) {
+        if (!(container instanceof ViewGroup)) {
+            return false;
+        }
+        ViewGroup group = (ViewGroup) container;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child == null || child.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            if (isBadgeView(child)) {
+                child.setVisibility(View.GONE);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 角标识别：1-3 位数字小文本，或宽高都很小的红色/橙色圆点。 */
+    private static boolean isBadgeView(View v) {
+        if (v instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) v).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            if (text.isEmpty() || text.length() > 3 || !text.matches("\\d+")) {
+                return false;
+            }
+            return v.getWidth() <= 200 && v.getHeight() <= 100;
+        }
+        if (v.getWidth() <= 80 && v.getHeight() <= 80
+                && v.getWidth() > 0 && v.getHeight() > 0) {
+            return isReddishBackground(v);
+        }
+        return false;
+    }
+
+    /** 判断视图背景是否偏红（消息角标红点）。 */
+    private static boolean isReddishBackground(View v) {
+        try {
+            android.graphics.drawable.Drawable d = v.getBackground();
+            if (d instanceof android.graphics.drawable.ColorDrawable) {
+                int color = ((android.graphics.drawable.ColorDrawable) d).getColor();
+                return android.graphics.Color.red(color) > 140
+                        && android.graphics.Color.green(color) < 120
+                        && android.graphics.Color.blue(color) < 120;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    /** 隐藏整个首页底栏（抖X home.bottom_hidden）。
+     *  找到同时含"首页/朋友/消息"文本的底部导航容器，整栏隐藏；
+     *  开启保留占位（home.bottom_keep_space）时用 INVISIBLE 保持布局。 */
+    private static void hideHomeBottomTabBar(View decor) {
+        View bar = findHomeTabBar(decor);
+        if (bar != null && bar.getVisibility() == View.VISIBLE) {
+            bar.setVisibility(keepHomeBottomBarSpace
+                    ? View.INVISIBLE : View.GONE);
+        }
+    }
+
+    private static View findHomeTabBar(View view) {
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            if (group.getChildCount() > 0 && isHomeTabBar(group)) {
+                return group;
+            }
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findHomeTabBar(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isHomeTabBar(ViewGroup group) {
+        int screenHeight;
+        try {
+            screenHeight = group.getResources().getDisplayMetrics().heightPixels;
+        } catch (Throwable ignored) {
+            return false;
+        }
+        int h = group.getHeight();
+        if (h <= 0 || h > screenHeight / 4) {
+            return false;
+        }
+        return hasText(group, "首页") && hasText(group, "朋友")
+                && hasText(group, "消息");
+    }
+
+    /** 定位首页顶部标签栏（抖X glass.top）：文本同底栏但位于屏幕上半部。 */
+    private static View findTopTabBar(View view) {
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            if (group.getChildCount() > 0 && isTopTabBar(group)) {
+                return group;
+            }
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findTopTabBar(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isTopTabBar(ViewGroup group) {
+        if (!isHomeTabBar(group)) {
+            return false;
+        }
+        try {
+            int[] loc = new int[2];
+            group.getLocationOnScreen(loc);
+            int screenHeight = group.getResources().getDisplayMetrics().heightPixels;
+            return loc[1] < screenHeight / 2;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean hasText(View view, String target) {
+        if (view instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) view).getText();
+            String text = cs == null ? "" : cs.toString();
+            if (text.contains(target)) {
+                return true;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (hasText(group.getChildAt(i), target)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 隐藏首页底栏皮肤（抖X home.ba08b02cee）：找到底部导航栏容器并清除背景。 */
+    private static void hideBottomBarSkin(View root) {
+        if (root instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) root).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            if ("首页".equals(text) || "朋友".equals(text)
+                    || "消息".equals(text) || "我".equals(text)) {
+                View cur = root;
+                for (int i = 0; i < 3 && cur.getParent() instanceof ViewGroup; i++) {
+                    ViewGroup parent = (ViewGroup) cur.getParent();
+                    if (parent == null) {
+                        return;
+                    }
+                    cur = parent;
+                }
+                clearBackgroundRecursive(cur);
+                return;
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                hideBottomBarSkin(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 递归清除视图背景（底栏皮肤）。 */
+    private static void clearBackgroundRecursive(View v) {
+        if (v == null) {
+            return;
+        }
+        try {
+            if (v.getBackground() != null) {
+                v.setBackground(null);
+            }
+        } catch (Throwable ignored) {
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                clearBackgroundRecursive(g.getChildAt(i));
+            }
+        }
+    }
+
+    /** 首页按钮刷新前确认（抖X home.6f099dad58）：拦截"刷新"按钮点击并弹确认。 */
+    private static void installRefreshConfirm(View root) {
+        if (root instanceof android.widget.TextView) {
+            CharSequence cs = ((android.widget.TextView) root).getText();
+            String text = cs == null ? "" : cs.toString().trim();
+            if ("刷新".equals(text) || text.contains("刷新")) {
+                final View btn = root;
+                btn.setOnClickListener(v -> {
+                    Activity activity = active == null ? null : active.get();
+                    if (activity != null && !activity.isFinishing() && !activity.isDestroyed()) {
+                        new android.app.AlertDialog.Builder(activity)
+                                .setTitle("确认刷新")
+                                .setMessage("确定要刷新首页吗？")
+                                .setPositiveButton("刷新", (d, w) -> performOriginalClick(btn, v))
+                                .setNegativeButton("取消", null)
+                                .show();
+                    } else {
+                        performOriginalClick(btn, v);
+                    }
+                });
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                installRefreshConfirm(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 通过反射调用被替换前的原始 OnClickListener，避免递归弹窗。 */
+    private static void performOriginalClick(View btn, View current) {
+        try {
+            java.lang.reflect.Field infoField = View.class.getDeclaredField("mListenerInfo");
+            infoField.setAccessible(true);
+            Object info = infoField.get(btn);
+            if (info != null) {
+                java.lang.reflect.Field clickField = info.getClass().getDeclaredField("mOnClickListener");
+                clickField.setAccessible(true);
+                View.OnClickListener original = (View.OnClickListener) clickField.get(info);
+                if (original != null && original != current) {
+                    original.onClick(btn);
+                    return;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        btn.performClick();
+    }
+
+    /** 音乐封面随右侧栏移动（抖X controls.a98f8afb28）：为旋转的圆形音乐碟片启用拖动。 */
+    private static void enableMusicDiscDrag(View root) {
+        if (root instanceof android.widget.ImageView) {
+            android.widget.ImageView iv = (android.widget.ImageView) root;
+            int w = iv.getWidth();
+            int h = iv.getHeight();
+            if (w > 0 && h > 0 && Math.abs(w - h) < 20 && w < 400
+                    && iv.getVisibility() == View.VISIBLE
+                    && iv.getAnimation() instanceof android.view.animation.RotateAnimation) {
+                installDrag(iv);
+                return;
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                enableMusicDiscDrag(group.getChildAt(i));
+            }
+        }
+    }
+
+    /** 视频右侧栏样式（抖X style__right）：对右侧操作栏应用透明度/位移/缩放。 */
+    private static void applyRightBarStyle(View root) {
+        boolean defaultOpacity = rightBarOpacity >= 100
+                && rightBarPausedOpacity >= 100
+                && !rightBarPausedSeparate;
+        boolean defaultTransform = rightBarDx == 0 && rightBarDy == 0
+                && rightBarScale >= 0.99f && rightBarScale <= 1.01f;
+        if (defaultOpacity && defaultTransform) {
+            return;
+        }
+        View bar = findRightBar(root);
+        if (bar == null) {
+            return;
+        }
+        try {
+            int opacity = rightBarOpacity;
+            if (rightBarPausedSeparate && !PlaybackState.isPlaying()) {
+                opacity = rightBarPausedOpacity;
+            }
+            float alpha = Math.max(0f, Math.min(1f, opacity / 100f));
+            bar.setAlpha(alpha);
+            if (rightBarDx != 0 || rightBarDy != 0) {
+                bar.setTranslationX(dp(bar, rightBarDx));
+                bar.setTranslationY(dp(bar, rightBarDy));
+            }
+            if (rightBarScale > 0) {
+                bar.setScaleX(rightBarScale);
+                bar.setScaleY(rightBarScale);
+            }
+        } catch (Throwable ignored) {
+            // 布局变化或异常时跳过本轮
+        }
+    }
+
+    /** 定位视频右侧操作栏：屏幕右侧、较高、含多个按钮的容器。 */
+    private static View findRightBar(View root) {
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            if (group.getWidth() > 0 && group.getHeight() > 200
+                    && group.getChildCount() >= 2) {
+                try {
+                    int[] loc = new int[2];
+                    group.getLocationOnScreen(loc);
+                    int screenW = group.getResources().getDisplayMetrics().widthPixels;
+                    if (loc[0] + group.getWidth() > screenW * 0.55f
+                            && containsRightBarHint(group)) {
+                        return group;
+                    }
+                } catch (Throwable ignored) {
+                    // 视图未附加到窗口时跳过
+                }
+            }
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findRightBar(group.getChildAt(i));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    // ---------- 玻璃扩展（glass.avatar / glass.double / glass.fps）----------
+    // 说明：以下为可用近似实现；头像为占位视图，待逆向出登录用户头像接口后替换为真实头像。
+
+    private static TextView glassFpsView;
+    private static Choreographer.FrameCallback glassFpsCallback;
+    private static long glassFpsBaseNanos;
+    private static int glassFpsCount;
+
+    /** 顶栏实时帧率（抖X glass.fps）：在状态栏下方居中显示 FPS。 */
+    private static void updateFpsOverlay(View decor) {
+        if (!(decor instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup root = (ViewGroup) decor;
+        TextView tv = glassFpsView;
+        if (tv == null || tv.getParent() == null) {
+            tv = new TextView(root.getContext());
+            tv.setIncludeFontPadding(false);
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            tv.setTextColor(Color.WHITE);
+            tv.setGravity(Gravity.CENTER);
+            tv.setPadding(dp(tv, 8), dp(tv, 2), dp(tv, 8), dp(tv, 2));
+            tv.setBackgroundColor(0x99000000);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            lp.topMargin = statusBarHeight(root.getContext()) + dp(tv, 6);
+            root.addView(tv, lp);
+            glassFpsView = tv;
+            glassFpsBaseNanos = 0;
+            glassFpsCount = 0;
+        }
+        if (glassFpsCallback == null) {
+            glassFpsCallback = frameTimeNanos -> {
+                if (glassFpsView == null) {
+                    return;
+                }
+                if (glassFpsBaseNanos == 0) {
+                    glassFpsBaseNanos = frameTimeNanos;
+                } else {
+                    glassFpsCount++;
+                    double seconds = (frameTimeNanos - glassFpsBaseNanos) / 1_000_000_000.0;
+                    if (seconds >= 1.0) {
+                        int fps = (int) Math.round(glassFpsCount / seconds);
+                        glassFpsView.setText("FPS " + fps);
+                        glassFpsCount = 0;
+                        glassFpsBaseNanos = frameTimeNanos;
+                    }
+                }
+                Choreographer.getInstance().postFrameCallback(this);
+            };
+            Choreographer.getInstance().postFrameCallback(glassFpsCallback);
+        }
+    }
+
+    private static void removeFpsOverlay() {
+        if (glassFpsCallback != null) {
+            try {
+                Choreographer.getInstance().removeFrameCallback(glassFpsCallback);
+            } catch (Throwable ignored) {
+                // 主循环未运行时忽略
+            }
+            glassFpsCallback = null;
+        }
+        if (glassFpsView != null) {
+            if (glassFpsView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) glassFpsView.getParent()).removeView(glassFpsView);
+            }
+            glassFpsView = null;
+        }
+        glassFpsBaseNanos = 0;
+        glassFpsCount = 0;
+    }
+
+    private static TextView glassAvatarView;
+
+    /** 底栏账号头像（抖X glass.avatar）：在底部导航"我"标签上方叠加圆形占位头像。 */
+    private static void updateAvatarOverlay(View decor) {
+        if (!(decor instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup root = (ViewGroup) decor;
+        TextView av = glassAvatarView;
+        if (av == null || av.getParent() == null) {
+            av = new TextView(root.getContext());
+            av.setText("我");
+            av.setTextColor(Color.WHITE);
+            av.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            av.setGravity(Gravity.CENTER);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setShape(GradientDrawable.OVAL);
+            bg.setColor(0xCCFF2D55);
+            av.setBackground(bg);
+            int size = dp(av, 32);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    size, size, Gravity.BOTTOM);
+            try {
+                int screenW = root.getResources().getDisplayMetrics().widthPixels;
+                lp.leftMargin = screenW * 4 / 5 - size / 2;
+            } catch (Throwable ignored) {
+                lp.gravity = Gravity.BOTTOM | Gravity.RIGHT;
+            }
+            lp.bottomMargin = dp(av, 6);
+            root.addView(av, lp);
+            glassAvatarView = av;
+        }
+    }
+
+    private static void removeAvatarOverlay() {
+        if (glassAvatarView != null) {
+            if (glassAvatarView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) glassAvatarView.getParent()).removeView(glassAvatarView);
+            }
+            glassAvatarView = null;
+        }
+    }
+
+    private static TextView glassDoubleView;
+
+    /** 顶栏双列浏览入口（抖X glass.double）：在状态栏下方右侧显示"双列"入口占位。 */
+    private static void updateDoubleOverlay(View decor) {
+        if (!(decor instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup root = (ViewGroup) decor;
+        TextView dv = glassDoubleView;
+        if (dv == null || dv.getParent() == null) {
+            dv = new TextView(root.getContext());
+            dv.setText("双列");
+            dv.setTextColor(Color.WHITE);
+            dv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            dv.setGravity(Gravity.CENTER);
+            dv.setPadding(dp(dv, 10), dp(dv, 4), dp(dv, 10), dp(dv, 4));
+            dv.setBackgroundColor(0x99000000);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP | Gravity.RIGHT);
+            lp.topMargin = statusBarHeight(root.getContext()) + dp(dv, 6);
+            lp.rightMargin = dp(dv, 12);
+            root.addView(dv, lp);
+            glassDoubleView = dv;
+        }
+    }
+
+    private static void removeDoubleOverlay() {
+        if (glassDoubleView != null) {
+            if (glassDoubleView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) glassDoubleView.getParent()).removeView(glassDoubleView);
+            }
+            glassDoubleView = null;
+        }
+    }
+
+    private static int statusBarHeight(android.content.Context context) {
+        try {
+            int id = context.getResources().getIdentifier(
+                    "status_bar_height", "dimen", "android");
+            return id > 0 ? context.getResources().getDimensionPixelSize(id) : 0;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    /** 右侧栏特征：容器内存在点赞/评论/收藏/分享等按钮提示。 */
+    private static boolean containsRightBarHint(View root) {
+        if (root instanceof TextView) {
+            CharSequence cs = ((TextView) root).getText();
+            String text = cs == null ? "" : cs.toString();
+            if (text.contains("点赞") || text.contains("评论")
+                    || text.contains("收藏") || text.contains("分享")) {
+                return true;
+            }
+        }
+        CharSequence desc = root.getContentDescription();
+        if (desc != null) {
+            String d = desc.toString();
+            if (d.contains("赞") || d.contains("评论")
+                    || d.contains("收藏") || d.contains("分享")) {
+                return true;
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (containsRightBarHint(group.getChildAt(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 为视图安装单指拖动（保存触摸偏移，移动时更新位置）。 */
+    private static void installDrag(final View v) {
+        if (v.getTag() instanceof String && DRAG_TAG.equals(v.getTag())) {
+            return;
+        }
+        v.setTag(DRAG_TAG);
+        v.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                    dragDx = event.getRawX() - view.getX();
+                    dragDy = event.getRawY() - view.getY();
+                    return true;
+                case android.view.MotionEvent.ACTION_MOVE:
+                    view.setX(event.getRawX() - dragDx);
+                    view.setY(event.getRawY() - dragDy);
+                    return true;
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    return true;
+                default:
+                    return false;
+            }
+        });
+    }
+
+    private static final String DRAG_TAG = "douyim_drag_enabled";
 
     private static void updateGesturePaths(View root, List<View> videos) {
         GESTURE_PATHS.clear();
